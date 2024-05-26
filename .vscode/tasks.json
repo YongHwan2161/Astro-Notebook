@@ -13,7 +13,8 @@
                 "-pthread",
                 "-lsqlite3",
                 "-lssl",
-                "-lcrypto"
+                "-lcrypto",
+                "-std=c++11"
             ],
             "options": {
                 "cwd": "${fileDirname}"

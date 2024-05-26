@@ -29,7 +29,7 @@ jobs:
         echo "Building the project..."
         # 여기에 빌드 명령을 추가하세요
 
-    - name: 실행 중인 main 중지
+    - name: 실행 중인 server 중지
       run: |
         echo "Running deployment script on VM..."
         gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} --command 'sudo pkill -f server'
