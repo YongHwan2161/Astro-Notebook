@@ -17,7 +17,7 @@
                 "-std=c++11"
             ],
             "options": {
-                "cwd": "${fileDirname}"
+                "cwd": "${fileDirname}",
             },
             "problemMatcher": [
                 "$gcc"
@@ -26,8 +26,8 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "detail": "디버거에서 생성된 작업입니다."
-        }
+            "detail": "디버거에서 생성된 작업입니다.",
+            }
     ],
     "version": "2.0.0"
 }
