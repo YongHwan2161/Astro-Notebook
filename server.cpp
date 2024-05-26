@@ -133,7 +133,7 @@ void handle_websocket_connection(int client_socket, const std::string &client_ke
                            "Sec-WebSocket-Accept: " +
                            accept_key + "\r\n\r\n";
     send(client_socket, response.c_str(), response.size(), 0);
-
+ 
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::seconds(1));
