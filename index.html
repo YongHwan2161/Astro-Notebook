@@ -7,20 +7,21 @@
 </head>
 <body>
     <h1>WebSocket Client</h1>
-    <div>
-        <button onclick="sendMessage()">Send Message to Server</button>
-    </div>
     <div id="messages"></div>
-
+    <input type="text" id="messageInput" placeholder="Type a message...">
+    <button onclick="sendMessage()">Send</button>
     <script>
-        let socket = new WebSocket("ws://localhost:8080");
+        let socket = new WebSocket("https://improved-zebra-wpw5q79q7wg3559r-8080.app.github.dev/");
 
         socket.onopen = function(event) {
             document.getElementById('messages').innerHTML += '<p>Connected to server</p>';
         };
 
         socket.onmessage = function(event) {
-            document.getElementById('messages').innerHTML += '<p>Message from server: ' + event.data + '</p>';
+            const messagesDiv = document.getElementById('messages');
+            const message = document.createElement('p');
+            message.textContent = 'Server: ' + event.data;
+            messagesDiv.appendChild(message);
         };
 
         socket.onclose = function(event) {
@@ -32,7 +33,16 @@
         };
 
         function sendMessage() {
-            socket.send("Hello from client");
+            const input = document.getElementById('messageInput');
+            const message = input.value;
+            socket.send(message);
+
+            const messagesDiv = document.getElementById('messages');
+            const messageElement = document.createElement('p');
+            messageElement.textContent = 'You: ' + message;
+            messagesDiv.appendChild(messageElement);
+
+            input.value = '';
         }
     </script>
 </body>
