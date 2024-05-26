@@ -11,6 +11,7 @@
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}",
                 "-pthread",
+                "-lsqlite3",
                 "-lssl",
                 "-lcrypto"
             ],
