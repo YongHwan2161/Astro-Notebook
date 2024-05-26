@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <sqlite3.h>
 
-const int PORT = 8080;
+const int PORT = 80;
 const int BUFFER_SIZE = 2048;
 // 사용자 데이터를 저장할 간단한 해시맵
 std::unordered_map<std::string, std::string> user_data;
