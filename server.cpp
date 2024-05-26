@@ -21,7 +21,6 @@ std::unordered_map<std::string, std::string> user_data;
 sqlite3* db;
 
 
-
 const std::string base64_chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "abcdefghijklmnopqrstuvwxyz"
