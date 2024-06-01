@@ -52,6 +52,7 @@ jobs:
         gcloud compute scp ./index.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
         gcloud compute scp ./elements.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
         gcloud compute scp ./generic.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
+        gcloud compute scp ./starMap.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
 
     - name: Execute deployment script on VM
       run: |
