@@ -847,6 +847,8 @@ void start_server()
         send_html(client_socket, "generic.html");
     } else if (request.find("GET /elements.html") != std::string::npos) {
         send_html(client_socket, "elements.html");
+    } else if (request.find("GET /starMap.html") != std::string::npos) {
+        send_html(client_socket, "starMap.html");
     } else {
                     send_html(client_socket, "index.html");
                 }

@@ -4321,3 +4321,77 @@
 			}
 
 		}
+		.form-container {
+            display: none;
+        }
+
+        .form-container.active {
+            display: block;
+        }
+		#login_username {
+			color: white; /* 텍스트 색상을 흰색으로 설정 */
+		}
+		#login_password {
+			color: white; /* 텍스트 색상을 흰색으로 설정 */
+		}
+		#loginResult {
+			color: white; /* 텍스트 색상을 흰색으로 설정 */
+		}
+		#userCount {
+			color: white; /* 텍스트 색상을 흰색으로 설정 */
+		}
+
+		#signup_username{
+			color: white;
+		}
+		#chat-icon {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        #chat-window {
+            display: none;
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: 300px;
+            height: 400px;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+        }
+        #chat-window header {
+            background-color: #007bff;
+            color: white;
+            padding: 10px;
+            border-radius: 10px 10px 0 0;
+            text-align: center;
+        }
+        #chat-window .content {
+            padding: 10px;
+            height: calc(100% - 60px);
+            overflow-y: auto;
+        }
+        #chat-window footer {
+            padding: 10px;
+            border-top: 1px solid #ccc;
+        }
+        #chat-window footer input {
+            width: calc(100% - 20px);
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
