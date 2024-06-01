@@ -37,8 +37,7 @@ jobs:
     - name: Copy files to GCP VM
       run: |
         echo "Deploying to Google Cloud VM..."
-        gcloud compute scp ./server ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
-        gcloud compute scp ./index.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
+        gcloud compute scp --recurse ./ ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
 
     - name: Execute deployment script on VM
       run: |

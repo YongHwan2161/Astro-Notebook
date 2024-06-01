@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.asm": "asm-collection",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "thread": "cpp"
     }
 }
