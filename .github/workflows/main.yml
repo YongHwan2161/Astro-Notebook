@@ -41,6 +41,7 @@ jobs:
         gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets/css"
         gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets/fonts"
         gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets/js"
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets/html"
         gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/images"
   
     - name: Copy files to GCP VM
@@ -49,10 +50,6 @@ jobs:
         gcloud compute scp ./server ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
         gcloud compute scp --recurse ./assets ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
         gcloud compute scp --recurse ./images ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
-        gcloud compute scp ./index.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
-        gcloud compute scp ./elements.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
-        gcloud compute scp ./generic.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
-        gcloud compute scp ./starMap.html ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
 
     - name: Execute deployment script on VM
       run: |
