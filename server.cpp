@@ -446,7 +446,7 @@ int get_user_count()
 void handle_user_count_request(int client_socket)
 {
     int user_count = get_user_count();
-    std::string response_body = "Total users: " + std::to_string(user_count);
+    std::string response_body = std::to_string(user_count);
     std::string response = "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/plain\r\n"
                            "Content-Length: " +
@@ -586,9 +586,11 @@ void handle_file_list_request(int client_socket)
     send(client_socket, response.c_str(), response.size(), 0);
     close(client_socket);
 }
-void send_image(int client_socket, const std::string &file_path) {
+void send_image(int client_socket, const std::string &file_path)
+{
     std::ifstream file(file_path, std::ios::binary);
-    if (!file) {
+    if (!file)
+    {
         std::string not_found_response = "HTTP/1.1 404 Not Found\r\n"
                                          "Content-Type: text/plain\r\n"
                                          "Content-Length: 13\r\n"
@@ -604,16 +606,19 @@ void send_image(int client_socket, const std::string &file_path) {
 
     std::string header = "HTTP/1.1 200 OK\r\n"
                          "Content-Type: image/jpeg\r\n"
-                         "Content-Length: " + std::to_string(file_content.size()) + "\r\n"
-                         "Connection: close\r\n\r\n";
+                         "Content-Length: " +
+                         std::to_string(file_content.size()) + "\r\n"
+                                                               "Connection: close\r\n\r\n";
     send(client_socket, header.c_str(), header.size(), 0);
     send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
 }
-void send_js(int client_socket, const std::string &file_path) {
+void send_js(int client_socket, const std::string &file_path)
+{
     std::ifstream file(file_path);
-    if (!file) {
+    if (!file)
+    {
         std::string not_found_response = "HTTP/1.1 404 Not Found\r\n"
                                          "Content-Type: text/plain\r\n"
                                          "Content-Length: 13\r\n"
@@ -629,16 +634,19 @@ void send_js(int client_socket, const std::string &file_path) {
 
     std::string header = "HTTP/1.1 200 OK\r\n"
                          "Content-Type: application/javascript\r\n"
-                         "Content-Length: " + std::to_string(file_content.size()) + "\r\n"
-                         "Connection: close\r\n\r\n";
+                         "Content-Length: " +
+                         std::to_string(file_content.size()) + "\r\n"
+                                                               "Connection: close\r\n\r\n";
     send(client_socket, header.c_str(), header.size(), 0);
     send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
 }
-void send_css(int client_socket, const std::string &file_path) {
+void send_css(int client_socket, const std::string &file_path)
+{
     std::ifstream file(file_path);
-    if (!file) {
+    if (!file)
+    {
         std::string not_found_response = "HTTP/1.1 404 Not Found\r\n"
                                          "Content-Type: text/plain\r\n"
                                          "Content-Length: 13\r\n"
@@ -654,16 +662,19 @@ void send_css(int client_socket, const std::string &file_path) {
 
     std::string header = "HTTP/1.1 200 OK\r\n"
                          "Content-Type: text/css\r\n"
-                         "Content-Length: " + std::to_string(file_content.size()) + "\r\n"
-                         "Connection: close\r\n\r\n";
+                         "Content-Length: " +
+                         std::to_string(file_content.size()) + "\r\n"
+                                                               "Connection: close\r\n\r\n";
     send(client_socket, header.c_str(), header.size(), 0);
     send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
 }
-void send_font(int client_socket, const std::string &file_path, const std::string &content_type) {
+void send_font(int client_socket, const std::string &file_path, const std::string &content_type)
+{
     std::ifstream file(file_path, std::ios::binary);
-    if (!file) {
+    if (!file)
+    {
         std::string not_found_response = "HTTP/1.1 404 Not Found\r\n"
                                          "Content-Type: text/plain\r\n"
                                          "Content-Length: 13\r\n"
@@ -678,21 +689,30 @@ void send_font(int client_socket, const std::string &file_path, const std::strin
     std::string file_content = oss.str();
 
     std::string header = "HTTP/1.1 200 OK\r\n"
-                         "Content-Type: " + content_type + "\r\n"
-                         "Content-Length: " + std::to_string(file_content.size()) + "\r\n"
-                         "Connection: close\r\n\r\n";
+                         "Content-Type: " +
+                         content_type + "\r\n"
+                                        "Content-Length: " +
+                         std::to_string(file_content.size()) + "\r\n"
+                                                               "Connection: close\r\n\r\n";
     send(client_socket, header.c_str(), header.size(), 0);
     send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
 }
-std::string get_font_content_type(const std::string &file_extension) {
-    if (file_extension == ".eot") return "application/vnd.ms-fontobject";
-    if (file_extension == ".otf") return "font/otf";
-    if (file_extension == ".svg") return "image/svg+xml";
-    if (file_extension == ".ttf") return "font/ttf";
-    if (file_extension == ".woff") return "font/woff";
-    if (file_extension == ".woff2") return "font/woff2";
+std::string get_font_content_type(const std::string &file_extension)
+{
+    if (file_extension == ".eot")
+        return "application/vnd.ms-fontobject";
+    if (file_extension == ".otf")
+        return "font/otf";
+    if (file_extension == ".svg")
+        return "image/svg+xml";
+    if (file_extension == ".ttf")
+        return "font/ttf";
+    if (file_extension == ".woff")
+        return "font/woff";
+    if (file_extension == ".woff2")
+        return "font/woff2";
     return "application/octet-stream";
 }
 void start_server()
@@ -843,14 +863,16 @@ void start_server()
         std::string extension = font_path.substr(font_path.find_last_of("."));
         std::string content_type = get_font_content_type(extension);
         send_font(client_socket, font_path, content_type);
-    } else if (request.find("GET /generic.html") != std::string::npos) {
-        send_html(client_socket, "generic.html");
-    } else if (request.find("GET /elements.html") != std::string::npos) {
-        send_html(client_socket, "elements.html");
-    } else if (request.find("GET /starMap.html") != std::string::npos) {
-        send_html(client_socket, "starMap.html");
+    } else if (request.find("GET /assets/html/generic.html") != std::string::npos) {
+        send_html(client_socket, "assets/html/generic.html");
+    } else if (request.find("GET /assets/html/elements.html") != std::string::npos) {
+        send_html(client_socket, "assets/html/elements.html");
+    } else if (request.find("GET /assets/html/starMap.html") != std::string::npos) {
+        send_html(client_socket, "assets/html/starMap.html");
+    } else if (request.find("GET /assets/html/edit.html") != std::string::npos) {
+        send_html(client_socket, "assets/html/edit.html");
     } else {
-                    send_html(client_socket, "index.html");
+                    send_html(client_socket, "assets/html/index.html");
                 }
             } })
             .detach();
