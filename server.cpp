@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <map>
 
 const int PORT = 8080;
 const int BUFFER_SIZE = 2048;
@@ -176,37 +177,48 @@ std::unordered_map<std::string, std::string> parse_urlencoded(const std::string 
     return params;
 }
 // 데이터베이스 초기화 함수
-void init_database()
-{
+void init_database() {
     int rc = sqlite3_open("users.db", &db);
-    if (rc)
-    {
+    if (rc) {
         std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
         exit(1);
-    }
-    else
-    {
+    } else {
         std::cout << "Opened database successfully" << std::endl;
     }
 
-    const char *sql_create_table =
+    const char* sql_create_users_table =
         "CREATE TABLE IF NOT EXISTS USERS ("
         "ID INTEGER PRIMARY KEY AUTOINCREMENT, "
         "USERNAME TEXT NOT NULL, "
         "PASSWORD TEXT NOT NULL);";
 
-    char *err_msg = nullptr;
-    rc = sqlite3_exec(db, sql_create_table, 0, 0, &err_msg);
-    if (rc != SQLITE_OK)
-    {
+    const char* sql_create_posts_table =
+        "CREATE TABLE IF NOT EXISTS posts ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "title TEXT NOT NULL, "
+        "content TEXT NOT NULL, "
+        "author TEXT NOT NULL);";
+
+    char* err_msg = nullptr;
+
+    rc = sqlite3_exec(db, sql_create_users_table, 0, 0, &err_msg);
+    if (rc != SQLITE_OK) {
         std::cerr << "SQL error: " << err_msg << std::endl;
         sqlite3_free(err_msg);
         sqlite3_close(db);
         exit(1);
+    } else {
+        std::cout << "Users table created successfully" << std::endl;
     }
-    else
-    {
-        std::cout << "Table created successfully" << std::endl;
+
+    rc = sqlite3_exec(db, sql_create_posts_table, 0, 0, &err_msg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error: " << err_msg << std::endl;
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        exit(1);
+    } else {
+        std::cout << "Posts table created successfully" << std::endl;
     }
 }
 // 회원가입 요청을 처리하는 함수
@@ -715,6 +727,81 @@ std::string get_font_content_type(const std::string &file_extension)
         return "font/woff2";
     return "application/octet-stream";
 }
+// Function to save the post to the database
+void savePost(const std::string& title, const std::string& content, const std::string& author) {
+    sqlite3* db;
+    sqlite3_stmt* stmt;
+
+    int rc = sqlite3_open("posts.db", &db);
+    if (rc) {
+        std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+
+    const char* sql = "INSERT INTO posts (title, content, author) VALUES (?, ?, ?);";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, title.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 2, content.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 3, author.c_str(), -1, SQLITE_STATIC);
+
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            std::cerr << "Execution failed: " << sqlite3_errmsg(db) << std::endl;
+        }
+    } else {
+        std::cerr << "Preparation failed: " << sqlite3_errmsg(db) << std::endl;
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+}
+// JSON 파싱 함수
+std::map<std::string, std::string> parse_json(const std::string& json_str) {
+    std::map<std::string, std::string> json_map;
+    std::string key, value;
+    bool in_key = false, in_value = false;
+    bool is_escaped = false;
+    
+    for (size_t i = 0; i < json_str.length(); ++i) {
+        char c = json_str[i];
+
+        if (c == '\\' && !is_escaped) {
+            is_escaped = true;
+            continue;
+        }
+
+        if (c == '"' && !is_escaped) {
+            if (in_key) {
+                in_key = false;
+            } else if (in_value) {
+                in_value = false;
+                json_map[key] = value;
+                key.clear();
+                value.clear();
+            } else {
+                if (key.empty()) {
+                    in_key = true;
+                } else {
+                    in_value = true;
+                }
+            }
+            is_escaped = false;
+            continue;
+        }
+
+        if (in_key) {
+            key += c;
+        } else if (in_value) {
+            value += c;
+        }
+
+        is_escaped = false;
+    }
+
+    return json_map;
+}
 void start_server()
 {
     int server_socket, client_socket;
@@ -824,7 +911,7 @@ void start_server()
                     } else {
                         std::cerr << "Boundary not found in the POST request" << std::endl;
                     }
-                } else if (request.find("GET /download") != std::string::npos) {
+                }  else if (request.find("GET /download") != std::string::npos) {
     size_t filename_pos = request.find("filename=");
     if (filename_pos != std::string::npos) {
         filename_pos += 9;
