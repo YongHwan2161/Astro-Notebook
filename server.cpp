@@ -922,7 +922,7 @@ void start_server()
         std::cerr << "Filename not found in the GET request" << std::endl;
     }
 } else if (request.find("GET /filelist") != std::string::npos) {
-                    handle_file_list_request(client_socket);
+                    handle_file_list_request(client_socket); 
                 } else if (request.find("GET /images/") != std::string::npos) {
         size_t start_pos = request.find("GET /images/") + 5;
         size_t end_pos = request.find(" ", start_pos);
