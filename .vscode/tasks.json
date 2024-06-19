@@ -14,7 +14,9 @@
                 "-lsqlite3",
                 "-lssl",
                 "-lcrypto",
-                "-std=c++11"
+                "-std=c++11",
+                "-ljsoncpp",
+                "-I/usr/include/jsoncpp"
             ],
             "options": {
                 "cwd": "${fileDirname}",

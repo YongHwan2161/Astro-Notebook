@@ -12,19 +12,22 @@
 	<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<link rel="stylesheet" href="/assets/css/main.css">
+	<link href="https://cdn.jsdelivr.net/npm/quill@1.3.6/dist/quill.snow.css" rel="stylesheet">
 </head>
 
 <body>
 
 	<!-- Header -->
 	<header id="header" class="alt">
-		<div class="logo"><a href="/assets/html/index.html">Homepage <span>by 용환, 상수, 현준</span></a></div>
+		<div class="logo"><a href="/assets/html/index.html">Homepage <span>?</span></a></div>
 		<a href="#menu">Menu</a>
 	</header><!-- Nav -->
 	<nav id="menu">
 		<ul class="links">
-			<li><a href="/assets/html/index.html">Home</a></li>
-			<li><a href="/assets/html/generic.html">Project</a></li>
+			<!-- <li><a href="/assets/html/index.html">Home</a></li> -->
+			<li><a href="#" onclick="showSection('banner')">Home</a></li>
+			<!-- <li><a href="/assets/html/generic.html">Project</a></li> -->
+			<li><a href="#" onclick="showSection('banner_project')">Projects</a></li>
 			<li><a href="/assets/html/elements.html">Blog</a></li>
 			<li><a href="/assets/html/starMap.html" target="_blank">Star Map</a></li>
 			<li><a href="/assets/html/edit.html" target="_blank">Edit</a></li>
@@ -34,7 +37,7 @@
 			<form id="loginForm">
 				<div class="11u 12u$(xsmall)">
 					<input type="text" name="name" id="login_username" value="" placeholder="Name">
-					<input type="password" name="name" id="login_password" value="" placeholder="password" >
+					<input type="password" name="name" id="login_password" value="" placeholder="password">
 				</div>
 				<input type="button" value="Login" onclick="submitLogin()">
 				<input type="button" value="Signup" onclick="showSignupForm()">
@@ -45,146 +48,220 @@
 			<h1>Signup</h1>
 			<form id="signupForm">
 				<div class="11u 12u$(xsmall)">
-					<input type="text" name="name" id="signup_username" value="" placeholder="user name" >
-				<button type="button" onclick="checkUsername()">중복확인</button>
-					<input type="password" name="name" id="signup_password" value="" placeholder="password" style="color: white;">					
-					<input type="password" name="name" id="signup_confirm_password" value="" placeholder="Confirm password" style="color: white;">
+					<input type="text" name="name" id="signup_username" value="" placeholder="user name">
+					<button type="button" onclick="checkUsername()">중복확인</button>
+					<input type="password" name="name" id="signup_password" value="" placeholder="password"
+						style="color: white;">
+					<input type="password" name="name" id="signup_confirm_password" value=""
+						placeholder="Confirm password" style="color: white;">
 					<input type="button" value="Signup" onclick="submitSignup()">
 					<input type="button" value="Back to Login" onclick="showLoginForm()">
 				</div>
 			</form>
 			<div id="signupResult" style="color: rgb(245, 6, 6);"></div>
 		</div>
-		<a href="/assets/html/user.html" >Total Users: </a><div id="userCount"></div>
 
-	</nav><!-- Banner -->
-	<section class="banner full">
-		<article><img src="/images/slide01.jpg" alt="" width="1440" height="961">
-			<div class="inner">
-				<header>
-					<p>A free responsive web site template by <a href="https://templated.co">TEMPLATED</a></p>
-					<h2>Hielo</h2>
-				</header>
-			</div>
-		</article>
-		<article><img src="/images/slide02.jpg" alt="" width="1440" height="961">
-			<div class="inner">
-				<header>
-					<p>Lorem ipsum dolor sit amet nullam feugiat</p>
-					<h2>Magna</h2>
-				</header>
-			</div>
-		</article>
-		<article><img src="/images/slide03.jpg" alt="" width="1440" height="962">
-			<div class="inner">
-				<header>
-					<p>Sed cursus aliuam veroeros lorem ipsum nullam</p>
-					<h2>Tempus</h2>
-				</header>
-			</div>
-		</article>
-		<article><img src="/images/slide04.jpg" alt="" width="1440" height="961">
-			<div class="inner">
-				<header>
-					<p>Adipiscing lorem ipsum feugiat sed phasellus consequat</p>
-					<h2>Etiam</h2>
-				</header>
-			</div>
-		</article>
-		<article><img src="/images/slide05.jpg" alt="" width="1440" height="962">
-			<div class="inner">
-				<header>
-					<p>Ipsum dolor sed magna veroeros lorem ipsum</p>
-					<h2>Adipiscing</h2>
-				</header>
-			</div>
-		</article>
-	</section><!-- One -->
-	<section id="one" class="wrapper style2">
-		<div class="inner">
-			<div class="grid-style">
+		<div id="welcomeContainer" class="form-container">
+			<h1>Welcome</h1>
+			<p id="welcomeMessage" style="color: white;"></p>
+			<button onclick="logout()">Logout</button>
+		</div>
 
-				<div>
-					<div class="box">
+		<a href="/assets/html/user.html">Total Users: </a>
+		<div id="userCount" style="color: white;"></div>
+
+	</nav>
+
+	<!-- Banner -->
+	<div id="banner">
+		<section class="banner full">
+			<article><img src="/images/slide01.jpg" alt="" width="1440" height="961">
+				<div class="inner">
+					<header>
+						<p>A free responsive web site template by <a href="https://templated.co">TEMPLATED</a></p>
+						<h2>Hielo</h2>
+					</header>
+				</div>
+			</article>
+			<article><img src="/images/slide02.jpg" alt="" width="1440" height="961">
+				<div class="inner">
+					<header>
+						<p>Lorem ipsum dolor sit amet nullam feugiat</p>
+						<h2>Magna</h2>
+					</header>
+				</div>
+			</article>
+			<article><img src="/images/slide03.jpg" alt="" width="1440" height="962">
+				<div class="inner">
+					<header>
+						<p>Sed cursus aliuam veroeros lorem ipsum nullam</p>
+						<h2>Tempus</h2>
+					</header>
+				</div>
+			</article>
+			<article><img src="/images/slide04.jpg" alt="" width="1440" height="961">
+				<div class="inner">
+					<header>
+						<p>Adipiscing lorem ipsum feugiat sed phasellus consequat</p>
+						<h2>Etiam</h2>
+					</header>
+				</div>
+			</article>
+			<article><img src="/images/slide05.jpg" alt="" width="1440" height="962">
+				<div class="inner">
+					<header>
+						<p>Ipsum dolor sed magna veroeros lorem ipsum</p>
+						<h2>Adipiscing</h2>
+					</header>
+				</div>
+			</article>
+		</section><!-- One -->
+		<section id="one" class="wrapper style2">
+			<div class="inner">
+				<div class="grid-style">
+
+					<div>
+						<div class="box">
+							<div class="image fit">
+								<img src="/images/pic02.jpg" alt="" width="600" height="300">
+							</div>
+							<div class="content">
+								<header class="align-center">
+									<p>maecenas sapien feugiat ex purus</p>
+									<h2>Lorem ipsum dolor</h2>
+								</header>
+								<p> Cras aliquet urna ut sapien tincidunt, quis malesuada elit facilisis. Vestibulum sit
+									amet tortor velit. Nam elementum nibh a libero pharetra elementum. Maecenas feugiat
+									ex
+									purus, quis volutpat lacus placerat malesuada.</p>
+								<footer class="align-center"><a href="#" class="button alt">Learn More</a>
+								</footer>
+							</div>
+						</div>
+					</div>
+
+					<div>
+						<div class="box">
+							<div class="image fit">
+								<img src="/images/pic03.jpg" alt="" width="600" height="300">
+							</div>
+							<div class="content">
+								<header class="align-center">
+									<p>mattis elementum sapien pretium tellus</p>
+									<h2>Vestibulum sit amet</h2>
+								</header>
+								<p> Cras aliquet urna ut sapien tincidunt, quis malesuada elit facilisis. Vestibulum sit
+									amet tortor velit. Nam elementum nibh a libero pharetra elementum. Maecenas feugiat
+									ex
+									purus, quis volutpat lacus placerat malesuada.</p>
+								<footer class="align-center"><a href="#" class="button alt">Learn More</a>
+								</footer>
+							</div>
+						</div>
+					</div>
+
+				</div>
+			</div>
+		</section><!-- Two -->
+		<section id="two" class="wrapper style3">
+			<div class="inner">
+				<header class="align-center">
+					<p>Nam vel ante sit amet libero scelerisque facilisis eleifend vitae urna</p>
+					<h2>Morbi maximus justo</h2>
+				</header>
+			</div>
+		</section><!-- Three -->
+		<section id="three" class="wrapper style2">
+			<div class="inner">
+				<header class="align-center">
+					<p class="special">Nam vel ante sit amet libero scelerisque facilisis eleifend vitae urna</p>
+					<h2>Morbi maximus justo</h2>
+				</header>
+				<div class="gallery">
+					<div>
 						<div class="image fit">
-							<img src="/images/pic02.jpg" alt="" width="600" height="300">
-						</div>
-						<div class="content">
-							<header class="align-center">
-								<p>maecenas sapien feugiat ex purus</p>
-								<h2>Lorem ipsum dolor</h2>
-							</header>
-							<p> Cras aliquet urna ut sapien tincidunt, quis malesuada elit facilisis. Vestibulum sit
-								amet tortor velit. Nam elementum nibh a libero pharetra elementum. Maecenas feugiat ex
-								purus, quis volutpat lacus placerat malesuada.</p>
-							<footer class="align-center"><a href="#" class="button alt">Learn More</a>
-							</footer>
+							<a href="#"><img src="/images/pic01.jpg" alt="" width="600" height="300"></a>
 						</div>
 					</div>
-				</div>
-
-				<div>
-					<div class="box">
+					<div>
 						<div class="image fit">
-							<img src="/images/pic03.jpg" alt="" width="600" height="300">
+							<a href="#"><img src="/images/pic02.jpg" alt="" width="600" height="300"></a>
 						</div>
-						<div class="content">
-							<header class="align-center">
-								<p>mattis elementum sapien pretium tellus</p>
-								<h2>Vestibulum sit amet</h2>
-							</header>
-							<p> Cras aliquet urna ut sapien tincidunt, quis malesuada elit facilisis. Vestibulum sit
-								amet tortor velit. Nam elementum nibh a libero pharetra elementum. Maecenas feugiat ex
-								purus, quis volutpat lacus placerat malesuada.</p>
-							<footer class="align-center"><a href="#" class="button alt">Learn More</a>
-							</footer>
+					</div>
+					<div>
+						<div class="image fit">
+							<a href="#"><img src="/images/pic03.jpg" alt="" width="600" height="300"></a>
+						</div>
+					</div>
+					<div>
+						<div class="image fit">
+							<a href="#"><img src="/images/pic04.jpg" alt="" width="600" height="300"></a>
 						</div>
 					</div>
 				</div>
+			</div>
+		</section>
+	</div>
 
+	<div id="banner_project" class="hidden">
+		<!-- One -->
+		<section id="One" class="wrapper style3">
+			<div class="inner">
+				<header class="align-center">
+					<p>Eleifend vitae urna</p>
+					<h2>Our Progects</h2>
+				</header>
 			</div>
-		</div>
-	</section><!-- Two -->
-	<section id="two" class="wrapper style3">
-		<div class="inner">
-			<header class="align-center">
-				<p>Nam vel ante sit amet libero scelerisque facilisis eleifend vitae urna</p>
-				<h2>Morbi maximus justo</h2>
-			</header>
-		</div>
-	</section><!-- Three -->
-	<section id="three" class="wrapper style2">
-		<div class="inner">
-			<header class="align-center">
-				<p class="special">Nam vel ante sit amet libero scelerisque facilisis eleifend vitae urna</p>
-				<h2>Morbi maximus justo</h2>
-			</header>
-			<div class="gallery">
-				<div>
-					<div class="image fit">
-						<a href="#"><img src="/images/pic01.jpg" alt="" width="600" height="300"></a>
+		</section>
+		<!-- Two -->
+		<section id="two" class="wrapper style2">
+			<div class="inner">
+				<div class="box">
+					<h2>Posts</h2>
+					<table id="posts-table" border="1">
+						<thead>
+							<tr>
+								<th>Title</th>
+								<th>Author</th>
+								<th>Timestamp</th>
+								<th>Actions</th>
+							</tr>
+						</thead>
+						<tbody id="posts-container"></tbody>
+					</table>
+					<div id="post-content">
+						<h2 id="post-title">
+							</h3>
+							<p id="post-author-timestamp"></p>
+							<p id="post-body"></p>
+							<button onclick="hidePostContent()">Back to List</button>
 					</div>
-				</div>
-				<div>
-					<div class="image fit">
-						<a href="#"><img src="/images/pic02.jpg" alt="" width="600" height="300"></a>
-					</div>
-				</div>
-				<div>
-					<div class="image fit">
-						<a href="#"><img src="/images/pic03.jpg" alt="" width="600" height="300"></a>
-					</div>
-				</div>
-				<div>
-					<div class="image fit">
-						<a href="#"><img src="/images/pic04.jpg" alt="" width="600" height="300"></a>
+					<div class="content">
+						<div class="11u 12u$(xsmall)">
+							<input type="button" value="게시글 작성" onclick="EditPost()">
+						</div>
+						<div id="editor2">
+							<form id="form1">
+								<div class="form-group">
+									<input id="name" name="name" type="text" placeholder="제목">
+								</div>
+								<div class="form-group">
+									<div id="editor-container">
+										<h2>Demo Content</h2>
+										<p>Preset build with <code>snow</code> theme, and some common formats.</p>
+									</div>
+								</div>
+								<input type="button" value="save" onclick="savePost()">
+							</form>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
-	</section>
-	
-	
+		</section>
+
+	</div>
+
+
 	<!-- Footer -->
 	<footer id="footer">
 		<div class="container">
@@ -201,15 +278,15 @@
 	</div>
 
 	<div id="chat-icon" onclick="toggleChatWindow()">💬</div>
-    <div id="chat-window">
-        <header>Chat</header>
-        <div class="content">
-            <p>Welcome to our chat service!</p>
-        </div>
-        <footer>
-            <input type="text" placeholder="Type a message...">
-        </footer>
-    </div>
+	<div id="chat-window">
+		<header>Chat</header>
+		<div class="content">
+			<p>Welcome to our chat service!</p>
+		</div>
+		<footer>
+			<input type="text" placeholder="Type a message...">
+		</footer>
+	</div>
 
 	<!-- Scripts -->
 	<script src="/assets/js/jquery.min.js"></script>
@@ -217,105 +294,377 @@
 	<script src="/assets/js/skel.min.js"></script>
 	<script src="/assets/js/util.js"></script>
 	<script src="/assets/js/main.js"></script>
+	<script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 	<script>
-		        function showSignupForm() {
-            document.getElementById('loginContainer').classList.remove('active');
-            document.getElementById('signupContainer').classList.add('active');
-        }
+		document.addEventListener('DOMContentLoaded', () => {
+			const token = localStorage.getItem('token');
+			if (token) {
+				verifyToken(token);
+			}
+		});
+		function verifyToken(token, callback) {
+			fetch('/verify-token', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded'
+				},
+				body: `token=${encodeURIComponent(token)}`
+			})
+				.then(response => {
+					if (!response.ok) {
+						throw new Error('Network response was not ok ' + response.statusText);
+					}
+					return response.json();
+				})
+				.then(data => {
+					if (data.success) {
+						callback(null, data.username);
+						showWelcomeMessage(data.username);
+					} else {
+						callback('Token verification failed', null);
+						localStorage.removeItem('token');
+						showLoginForm();
+					}
+				})
+				.catch(error => {
+					console.error('Error during fetch:', error);
+					//alert('An error occurred during token verification' + error);
+					callback(error, null);
+				});
+		}
 
-        function showLoginForm() {
+		function showSignupForm() {
+			document.getElementById('loginContainer').classList.remove('active');
+			document.getElementById('signupContainer').classList.add('active');
+			document.getElementById('welcomeContainer').classList.remove('active');
+		}
+
+		function showLoginForm() {
 			event.preventDefault();
-            document.getElementById('signupContainer').classList.remove('active');
-            document.getElementById('loginContainer').classList.add('active');
-        }
-        function checkUsername() {
-            const username = document.getElementById('signup_username').value;
+			document.getElementById('signupContainer').classList.remove('active');
+			document.getElementById('loginContainer').classList.add('active');
+			document.getElementById('welcomeContainer').classList.remove('active');
+		}
+		let isUsernameAvailable = false;
+		document.getElementById('signupButton').disabled = true;
 
-            fetch('/check-username', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: `username=${encodeURIComponent(username)}`
-            })
-                .then(response => response.text())
-                .then(data => {
-                    const signupResult = document.getElementById('signupResult');
-                    signupResult.textContent = data;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
-        function submitSignup() {
-            const username = document.getElementById('signup_username').value;
-            const password = document.getElementById('signup_password').value;
-            const confirmPassword = document.getElementById('signup_confirm_password').value;
-            const signupResult = document.getElementById('signupResult');
+		function checkUsername() {
+			const username = document.getElementById('signup_username').value;
 
-            if (password !== confirmPassword) {
-                signupResult.textContent = 'Passwords do not match';
-                return;
-            }
-            fetch('/signup', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
-            })
-                .then(response => response.text())
-                .then(data => {
-                    signupResult.textContent = data;
+			fetch('/check-username', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded'
+				},
+				body: `username=${encodeURIComponent(username)}`
+			})
+				.then(response => response.text())
+				.then(data => {
+					const signupResult = document.getElementById('signupResult');
+					signupResult.textContent = data;
+					if (data === 'Username is available') {
+						isUsernameAvailable = true;
+						signupResult.textContent = "아이디 사용 가능!";
+						document.getElementById('signupButton').disabled = false;
+					} else {
+						isUsernameAvailable = false;
+						signupResult.textContent = "이미 사용 중인 아이디입니다.";
+						document.getElementById('signupButton').disabled = true;
+					}
+				})
+				.catch(error => {
+					console.error('Error:', error);
+				});
+		}
+		function submitSignup() {
+			if (!isUsernameAvailable) {
+				document.getElementById('signupResult').textContent = '아이디 중복확인을 해주세요.';
+				return;
+			}
+			const username = document.getElementById('signup_username').value;
+			const password = document.getElementById('signup_password').value;
+			const confirmPassword = document.getElementById('signup_confirm_password').value;
+			const signupResult = document.getElementById('signupResult');
+			if (password == "") {
+				signupResult.textContent = '비밀번호를 입력하세요.';
+				return;
+			}
+			else if (password !== confirmPassword) {
+				signupResult.textContent = 'Passwords do not match';
+				return;
+			}
+			fetch('/signup', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded'
+				},
+				body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+			})
+				.then(response => response.text())
+				.then(data => {
+					signupResult.textContent = data;
 					fetchUserCount();
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
+				})
+				.catch(error => {
+					console.error('Error:', error);
+				});
+		}
+		function submitLogin() {
+			const username = document.getElementById('login_username').value;
+			const password = document.getElementById('login_password').value;
+			const loginResult = document.getElementById('loginResult');
 
-        function submitLogin() {
-            const username = document.getElementById('login_username').value;
-            const password = document.getElementById('login_password').value;
-
-            fetch('/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
-            })
-                .then(response => response.text())
-                .then(data => {
-                    const loginResult = document.getElementById('loginResult');
-                    loginResult.textContent = data;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
+			fetch('/login', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded'
+				},
+				body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+			})
+				.then(response => response.json())
+				.then(data => {
+					if (data.success) {
+						localStorage.setItem('token', data.token);
+						localStorage.setItem('username', data.username);
+						showWelcomeMessage(username);
+					} else {
+						loginResult.textContent = 'Login failed';
+					}
+					// const loginResult = document.getElementById('loginResult');
+					// loginResult.textContent = data;
+				})
+				.catch(error => {
+					console.error('Error:', error);
+				});
+		}
+		function logout() {
+			localStorage.removeItem('token');
+			localStorage.removeItem('username');
+			showLoginForm();
+		}
+		function showWelcomeMessage(username) {
+			const now = new Date();
+			const welcomeMessage = `Welcome, ${username}! \r\nYou logged in at ${now.toLocaleString()}.`;
+			document.getElementById('welcomeMessage').textContent = welcomeMessage;
+			document.getElementById('loginContainer').classList.remove('active');
+			document.getElementById('signupContainer').classList.remove('active');
+			document.getElementById('welcomeContainer').classList.add('active');
+		}
 		function fetchUserCount() {
-            fetch('/usercount')
-                .then(response => response.text())
-                .then(data => {
-                    const userCountDiv = document.getElementById('userCount');
-                    userCountDiv.textContent = data;
-                })
-                .catch(error => {
-                    console.error('Error fetching user count:', error);
-                });
-        }
+			fetch('/usercount')
+				.then(response => response.text())
+				.then(data => {
+					const userCountDiv = document.getElementById('userCount');
+					userCountDiv.textContent = data;
+				})
+				.catch(error => {
+					console.error('Error fetching user count:', error);
+				});
+		}
 		function toggleChatWindow() {
-            const chatWindow = document.getElementById('chat-window');
-            if (chatWindow.style.display === 'none' || chatWindow.style.display === '') {
-                chatWindow.style.display = 'block';
-            } else {
-                chatWindow.style.display = 'none';
-            }
-        }
+			const chatWindow = document.getElementById('chat-window');
+			if (chatWindow.style.display === 'none' || chatWindow.style.display === '') {
+				chatWindow.style.display = 'block';
+			} else {
+				chatWindow.style.display = 'none';
+			}
+		}
+		function deletePost(id) {
+			const token = localStorage.getItem('token');
+			if (!token) {
+				alert('You must be logged in to delete a post');
+				return;
+			}
+
+			verifyToken(token, (error, username) => {
+				if (error) {
+					alert(error);
+					return;
+				}
+
+				const postData = { id: id, username: username };
+
+				fetch('/delete_post', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify(postData)
+				})
+					.then(response => response.json())
+					.then(data => {
+						if (data.success) {
+							alert('Post deleted successfully!');
+							loadPosts();  // 게시글 삭제 후 게시글 목록을 다시 로드
+						} else {
+							alert('Failed to delete post.');
+						}
+					})
+					.catch(error => {
+						console.error('Error:', error);
+						alert('Error: ' + error);
+					});
+			});
+		}
+		function loadPosts() {
+			fetch('/posts')
+				.then(response => response.json())
+				.then(data => {
+					const postsContainer = document.getElementById('posts-container');
+					postsContainer.innerHTML = '';  // 기존 게시글 목록을 초기화
+					data.forEach(post => {
+						const row = document.createElement('tr');
+						// Convert timestamp to a more readable format
+						const date = new Date(post.timestamp);
+						const formattedTimestamp = date.toLocaleString();
+
+						row.innerHTML = `
+                            <td><a href="#" onclick="showPostContent('${post.id}', '${post.title}', '${post.author}', '${formattedTimestamp}', \`${post.content}\`)">${post.title}</a></td>
+                            <td>${post.author}</td>
+                            <td>${formattedTimestamp}</td>
+                            <td><button onclick="deletePost(${post.id})">Delete</button></td>
+                        `;
+						postsContainer.appendChild(row);
+					});
+				})
+				.catch(error => {
+					console.error('Error:', error);
+					alert('Error: ' + error);
+				});
+		}
+		function showPostContent(id, title, author, timestamp, content) {
+			document.getElementById('post-title').innerText = title;
+			document.getElementById('post-author-timestamp').innerText = `By ${author} on ${timestamp}`;
+			document.getElementById('post-body').innerHTML = content;
+			document.getElementById('posts-table').style.display = 'none';
+			document.getElementById('post-content').style.display = 'block';
+		}
+		function hidePostContent() {
+			document.getElementById('post-content').style.display = 'none';
+			document.getElementById('posts-table').style.display = 'table';
+		}
 		window.onload = function () {
-            fetchUserCount();
-        };
+			fetchUserCount();
+		};
+		function showSection(sectionId) {
+			// Hide all sections
+			document.getElementById('banner').classList.add('hidden');
+			document.getElementById('banner_project').classList.add('hidden');
+
+			// Show the selected section
+			document.getElementById(sectionId).classList.remove('hidden');
+			if (sectionId == 'banner_project') {
+				loadPosts();  // 페이지가 로드될 때 게시글 목록을 로드
+			}
+		}
+
+		var quill;
+		function EditPost() {
+			var form = document.getElementById('form1');
+			form.style.display = 'block';
+			quill = new Quill('#editor-container', {
+				modules: {
+					toolbar: [
+						[{ 'font': [] }, { 'size': [] }],
+						['bold', 'italic', 'underline', 'strike'],
+						[{ 'color': [] }, { 'background': [] }],
+						[{ 'script': 'sub' }, { 'script': 'super' }],
+						[{ 'header': '1' }, { 'header': '2' }, 'blockquote', 'code-block'],
+						[{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
+						[{ 'direction': 'rtl' }, { 'align': [] }],
+						['link', 'image', 'video', 'formula'],
+						['clean']
+					],
+				},
+				theme: 'snow'
+			});
+		}
+		// // Custom image handler
+		// function imageHandler() {
+		// 	const input = document.createElement('input');
+		// 	input.setAttribute('type', 'file');
+		// 	input.setAttribute('accept', 'image/*');
+		// 	input.click();
+
+		// 	input.onchange = async () => {
+		// 		const file = input.files[0];
+		// 		if (file) {
+		// 			const formData = new FormData();
+		// 			formData.append('image', file);
+
+		// 			// Upload the image to the server
+		// 			const response = await fetch('/upload_image', {
+		// 				method: 'POST',
+		// 				body: formData
+		// 			});
+		// 			const imageUrl = await response.text();
+
+		// 			// Insert the uploaded image URL into the editor
+		// 			const range = quill.getSelection();
+		// 			quill.insertEmbed(range.index, 'image', imageUrl);
+		// 		}
+		// 	};
+		// }
+
+		function savePost() {
+			//event.preventDefault(); // Prevent form submission
+			// alert('savePost call');
+			// Verify if quill is initialized
+			if (!quill) {
+				alert('Editor is not initialized.');
+				return;
+			}
+
+			const token = localStorage.getItem('token');
+			if (!token) {
+				alert('You must be logged in to save a post');
+				return;
+			}
+			verifyToken(token, (error, username) => {
+				if (error) {
+					alert(error);
+					return;
+				}
+
+				const title = document.getElementById('name').value;
+				if (title == "") {
+					alert('제목을 입력해 주세요.');
+					return;
+				}
+				const content = quill.root.innerHTML;
+				const author = username; // 로그인된 사용자 이름으로 author 설정
+				const timestamp = new Date().toISOString(); // 현재 시각을 ISO 형식으로 저장
+
+				const postData = {
+					title: title,
+					content: content,
+					author: author,
+					timestamp: timestamp
+				};
+
+				fetch('/save_post', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify(postData)
+				})
+					.then(response => response.json())
+					.then(data => {
+						if (data.success) {
+							alert('Post saved successfully!');
+							loadPosts();  // 페이지가 로드될 때 게시글 목록을 로드
+						} else {
+							alert('Failed to save post.');
+						}
+					})
+					.catch(error => {
+						console.error('Error:', error);
+						alert('Error' + error);
+					});
+			});
+		}
+
 	</script>
 </body>
 

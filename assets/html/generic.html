@@ -28,7 +28,8 @@
 	<header id="header">
 		<div class="logo"><a href="/assets/html/index.html">Project <span>by ___</span></a></div>
 		<a href="#menu">Menu</a>
-	</header><!-- Nav -->
+	</header>
+	<!-- Nav -->
 	<nav id="menu">
 		<ul class="links">
 			<li><a href="/assets/html/index.html">Home</a></li>
@@ -42,7 +43,7 @@
 		<div class="inner">
 			<header class="align-center">
 				<p>Eleifend vitae urna</p>
-				<h2>Our Progets</h2>
+				<h2>Our Progects</h2>
 			</header>
 		</div>
 	</section>
@@ -63,6 +64,7 @@
 							<div id="editor2"></div>
 						</div>
 						<button type="submit">저장</button>
+						<input type="button" value="save" onclick="savePost()">
 					</form>
 
 				</div>
@@ -92,6 +94,35 @@
 	<script src="/assets/js/util.js"></script>
 	<script src="/assets/js/main.js"></script>
 	<script>
+		document.addEventListener('DOMContentLoaded', () => {
+			const token = localStorage.getItem('token');
+			if (token) {
+				verifyToken(token);
+			}
+		});
+
+		function verifyToken(token) {
+			fetch('/verify-token', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded'
+				},
+				body: `token=${encodeURIComponent(token)}`
+			})
+				.then(response => response.json())
+				.then(data => {
+					if (data.success) {
+						showWelcomeMessage(data.username);
+					} else {
+						localStorage.removeItem('token');
+						showLoginForm();
+					}
+				})
+				.catch(error => {
+					console.error('Error:', error);
+				});
+		}
+
 		function EditPost() {
 			var editor = document.getElementById('editor2');
 			fetch('/assets/html/edit.html')
@@ -118,38 +149,76 @@
 				})
 				.catch(error => console.error('Error loading the HTML file:', error));
 		}
-		document.getElementById('form1').addEventListener('submit', function(event) {
-            event.preventDefault(); // Prevent form submission
 
-            const title = document.getElementById('name').value;
-            const content = quill.root.innerHTML;
-            const author = "작성자"; // Replace with the actual author value if available
+		function savePost() {
+			event.preventDefault(); // Prevent form submission
+			alert('savePost call');
+			const title = document.getElementById('name').value;
+			const content = quill.root.innerHTML;
+			const author = "작성자"; // Replace with the actual author value if available
+			const timestamp = new Date().toISOString(); // 현재 시각을 ISO 형식으로 저장
 
-            const postData = {
-                title: title,
-                content: content,
-                author: author
-            };
+			const postData = {
+				title: title,
+				content: content,
+				author: author,
+				timestamp: timestamp
+			};
 
-            fetch('/save_post', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(postData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Post saved successfully!');
-                } else {
-                    alert('Failed to save post.');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-        });
+			fetch('/save_post', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(postData)
+			})
+				.then(response => response.json())
+				.then(data => {
+					if (data.success) {
+						alert('Post saved successfully!');
+					} else {
+						alert('Failed to save post.');
+					}
+				})
+				.catch(error => {
+					console.error('Error:', error);
+				});
+		}
+		// document.getElementById('form1').addEventListener('submit', function (event) {
+		// 	event.preventDefault(); // Prevent form submission
+
+		// 	const title = document.getElementById('name').value;
+		// 	const content = quill.root.innerHTML;
+		// 	const author = "작성자"; // Replace with the actual author value if available
+		// 	const timestamp = new Date().toISOString(); // 현재 시각을 ISO 형식으로 저장
+
+		// 	const postData = {
+		// 		title: title,
+		// 		content: content,
+		// 		author: author,
+		// 		timestamp: timestamp
+		// 	};
+
+		// 	fetch('/save_post', {
+		// 		method: 'POST',
+		// 		headers: {
+		// 			'Content-Type': 'application/json'
+		// 		},
+		// 		body: JSON.stringify(postData)
+		// 	})
+		// 		.then(response => response.json())
+		// 		.then(data => {
+		// 			if (data.success) {
+		// 				alert('Post saved successfully!');
+		// 			} else {
+		// 				alert('Failed to save post.');
+		// 			}
+		// 		})
+		// 		.catch(error => {
+		// 			console.error('Error:', error);
+		// 		});
+		// });
+
 	</script>
 </body>
 
