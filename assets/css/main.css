@@ -4651,3 +4651,55 @@ body.is-mobile .banner>article {
 #form1 {
 	display: none;
 }
+#posts-container {
+	width: 80%;
+	margin: 20px auto;
+	border-collapse: collapse;
+}
+
+#posts-container th, #posts-container td {
+	padding: 10px;
+	border: 1px solid #ddd;
+}
+
+#posts-container th {
+	background-color: #f4f4f4;
+}
+
+#posts-container a {
+	color: #007bff;
+	text-decoration: none;
+}
+
+#posts-container a:hover {
+	text-decoration: underline;
+}
+
+#post-content {
+	display: none;
+	width: 80%;
+	margin: 20px auto;
+	background: white;
+	padding: 20px;
+	border-radius: 5px;
+	box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+#post-content h2 {
+	margin-top: 0;
+}
+
+.back-button {
+	display: inline-block;
+	margin-top: 20px;
+	padding: 10px 20px;
+	background-color: #007bff;
+	color: white;
+	border: none;
+	border-radius: 5px;
+	cursor: pointer;
+}
+
+.back-button:hover {
+	background-color: #0056b3;
+}

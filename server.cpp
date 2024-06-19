@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <functional>
 #include <regex>
+#include <random>
 
 const int PORT = 35500;
 const int BUFFER_SIZE = 2048;
@@ -1063,33 +1064,164 @@ void handle_verify_token(int client_socket, const std::string &body)
     std::cerr << response.str() << std::endl;
     send(client_socket, response.str().c_str(), response.str().length(), 0);
 }
-// Function to save base64 image data to a file
-std::string save_image(const std::string &base64_data, const std::string &output_path) {
-    static int image_counter = 0;
-    std::string file_path = output_path + "image_" + std::to_string(image_counter++) + ".png";
+// Function to get current timestamp in milliseconds
+std::string get_current_timestamp()
+{
+    auto now = std::chrono::system_clock::now();
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    return std::to_string(milliseconds);
+}
+
+// Function to generate a random number
+std::string generate_random_number()
+{
+    std::random_device rd;
+    std::mt19937 mt(rd());
+    std::uniform_int_distribution<int> dist(100000, 999999);
+    return std::to_string(dist(mt));
+}
+
+// Function to save an image from base64 data
+std::string save_image(const std::string &base64_data, const std::string &output_path, const std::string &extension)
+{
+    std::string timestamp = get_current_timestamp();
+    std::string random_number = generate_random_number();
+    std::string file_path = output_path + "image_" + timestamp + "_" + random_number + "." + extension;
     std::ofstream out_file(file_path, std::ios::binary);
     std::vector<unsigned char> decoded_data = base64_decode_uchar(base64_data);
     out_file.write(reinterpret_cast<const char *>(decoded_data.data()), decoded_data.size());
     out_file.close();
     return file_path;
 }
-// Function to process content and save images
-std::string process_content_and_save_images(const std::string &content, const std::string &output_path) {
-    //std::regex base64_regex("data:image\\/[^;]+;base64,([^\"'\\s]+)");
-    std::regex base64_regex(R"(data:image\/[^;]+;base64,([^>]+))");
-    std::string processed_content = content;
-    std::smatch match;
-    std::string::const_iterator searchStart(content.cbegin());
+// std::string process_content_and_save_images(const std::string &content, const std::string &output_path)
+// {
+//     std::regex base64_regex(R"(data/[^;]+;base64,([^>]+))");
+//     std::string processed_content = content;
+//     std::smatch match;
+//     std::string::const_iterator searchStart(processed_content.cbegin());
+//     while (std::regex_search(searchStart, processed_content.cend(), match, base64_regex))
+//     {
+//         std::string base64_data = match[1].str();
+//         std::string file_path = save_image(base64_data, output_path);
 
-    while (std::regex_search(searchStart, content.cend(), match, base64_regex)) {
-        std::string base64_data = match[1].str();
-        std::string file_path = save_image(base64_data, output_path);
-        
-        // Replace the base64 data with the file path
-        processed_content.replace(match.position(0), match.length(0), file_path);
+//         std::string quoted_file_path = file_path + "\"";
+//         // Replace the base64 data with the file path in processed_content
+//         processed_content.replace(match.position(0), match.length(0), quoted_file_path);
+
+//         // Update searchStart to continue searching after the replacement
+//         searchStart = processed_content.begin() + match.position(0) + quoted_file_path.length();
+//     }
+
+//     return processed_content;
+// }
+
+// Function to process content and save images
+std::string process_content_and_save_images(const std::string &content, const std::string &output_path)
+{
+    std::string processed_content = content;
+    size_t pos = 0;
+
+    while ((pos = processed_content.find("data:image/", pos)) != std::string::npos)
+    {
+        size_t start_pos = pos;
+        size_t end_pos = processed_content.find('>', start_pos);
+        if (end_pos == std::string::npos)
+        {
+            break;
+        }
+
+        // Extract the entire data:image/... base64, data
+        std::string data_uri = processed_content.substr(start_pos, end_pos - start_pos);
+
+        // Find the base64 comma position
+        size_t base64_pos = data_uri.find("base64,");
+        if (base64_pos == std::string::npos)
+        {
+            pos = end_pos;
+            continue;
+        }
+        base64_pos += 7; // Move past "base64,"
+
+        // Extract the extension and base64 data
+        std::string extension = data_uri.substr(11, data_uri.find(';') - 11);
+        std::string base64_data = data_uri.substr(base64_pos);
+
+        // Save the image and get the file path
+        std::string file_path = save_image(base64_data, output_path, extension);
+
+        // Create the replacement string with the file path
+        std::string quoted_file_path = file_path + "\"";
+
+        // Replace the base64 data with the file path in processed_content
+        processed_content.replace(start_pos, end_pos - start_pos, quoted_file_path);
+
+        // Update the position to continue searching after the replacement
+        pos = start_pos + quoted_file_path.length();
     }
 
     return processed_content;
+}
+// Function to process content and save images
+// std::string process_content_and_save_images(const std::string &content, const std::string &output_path)
+// {
+//     std::regex base64_regex(R"(data:image\/([^;]+);base64,([^>]+))");
+//     std::string processed_content = content;
+//     std::smatch match;
+//     std::string::const_iterator searchStart(processed_content.cbegin());
+
+//     while (std::regex_search(searchStart, processed_content.cend(), match, base64_regex))
+//     {
+//         std::string extension = match[1].str();   // Extract image extension
+//         std::string base64_data = match[2].str(); // Extract base64 data
+//         std::string file_path = save_image(base64_data, output_path, extension);
+
+//         // Create the replacement string with the file path
+//         std::string quoted_file_path = file_path + "\"";
+
+//         // Replace the base64 data with the file path in processed_content
+//         processed_content.replace(match.position(0), match.length(0), quoted_file_path);
+
+//         // Update searchStart to continue searching after the replacement
+//         searchStart = processed_content.begin() + match.position(0) + quoted_file_path.length();
+//     }
+
+//     return processed_content;
+// }
+// Function to escape JSON string
+std::string escape_json_string(const std::string &input)
+{
+    std::ostringstream ss;
+    for (char c : input)
+    {
+        switch (c)
+        {
+        case '\"':
+            ss << "\\\"";
+            break;
+        case '\\':
+            ss << "\\\\";
+            break;
+        case '\b':
+            ss << "\\b";
+            break;
+        case '\f':
+            ss << "\\f";
+            break;
+        case '\n':
+            ss << "\\n";
+            break;
+        case '\r':
+            ss << "\\r";
+            break;
+        case '\t':
+            ss << "\\t";
+            break;
+        default:
+            ss << c;
+            break;
+        }
+    }
+    return ss.str();
 }
 void save_post(int client_socket, const std::string &body)
 {
@@ -1128,7 +1260,7 @@ void save_post(int client_socket, const std::string &body)
     }
 
     sqlite3_bind_text(stmt, 1, title.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, content.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, processed_content.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, author.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
 
@@ -1148,6 +1280,17 @@ void save_post(int client_socket, const std::string &body)
     std::cerr << "save_post success!" << std::endl;
     send(client_socket, response.c_str(), response.length(), 0);
 }
+// Function to replace all occurrences of a substring with another substring in a string
+void replace_all(std::string &str, const std::string &from, const std::string &to)
+{
+    size_t start_pos = 0;
+    while ((start_pos = str.find(from, start_pos)) != std::string::npos)
+    {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length();
+    }
+}
+
 void handle_get_posts(int client_socket)
 {
     std::string sql = "SELECT id, title, content, author, timestamp FROM posts;";
@@ -1176,7 +1319,14 @@ void handle_get_posts(int client_socket)
     sqlite3_finalize(stmt);
 
     Json::StreamWriterBuilder writer;
+    // Adjust the Json::StreamWriterBuilder settings
+    writer.settings_["indentation"] = "";             // No indentation
+    writer.settings_["emitUTF8"] = true;              // Use UTF-8 encoding
+    writer.settings_["escapeForwardSlashes"] = false; // Do not escape forward slashes
+
     std::string json_response = Json::writeString(writer, posts);
+    // Replace \\\" with \"
+    // replace_all(json_response, "\\\"", "\"");
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
     send(client_socket, response.c_str(), response.length(), 0);
@@ -1260,14 +1410,16 @@ void handle_delete_post(int client_socket, const std::string &request_body)
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
     send(client_socket, response.c_str(), response.length(), 0);
 }
-std::string parseMultipartData(const std::string &data, std::string &filename) {
+std::string parseMultipartData(const std::string &data, std::string &filename)
+{
     // Parse the boundary
     size_t boundary_pos = data.find("\r\n");
     std::string boundary = data.substr(0, boundary_pos);
 
     // Find the start of the file content
     size_t file_start_pos = data.find("filename=\"", boundary_pos);
-    if (file_start_pos == std::string::npos) return "";
+    if (file_start_pos == std::string::npos)
+        return "";
 
     file_start_pos += 10;
     size_t file_end_pos = data.find("\"", file_start_pos);
@@ -1279,12 +1431,14 @@ std::string parseMultipartData(const std::string &data, std::string &filename) {
 
     return data.substr(file_start_pos, file_end_boundary_pos - file_start_pos);
 }
-void handleUploadImage(int client_socket, const std::string &request_body) {
+void handleUploadImage(int client_socket, const std::string &request_body)
+{
     // Parse the multipart data to extract the file content and filename
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
-    if (filename.empty() || file_content.empty()) {
+    if (filename.empty() || file_content.empty())
+    {
         std::string response = "HTTP/1.1 400 Bad Request\r\n\r\n";
         send(client_socket, response.c_str(), response.length(), 0);
         close(client_socket);
