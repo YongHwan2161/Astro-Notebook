@@ -656,7 +656,7 @@ int get_user_count()
     }
     else
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl; 
     }
     return user_count;
 }
