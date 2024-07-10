@@ -343,32 +343,74 @@
 			}
 
 			fetchUserCount();
-			// console.log('hello?');
 
-			// 로그를 표시할 컨테이너 생성
+			// 로그 컨테이너 생성
 			const logContainer = document.createElement('div');
 			logContainer.id = 'log-container';
-			logContainer.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.8); color: white; font-family: monospace; padding: 10px; z-index: 9999; transition: max-height 0.3s ease-out;';
+			logContainer.style.cssText = `
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        width: 300px;
+        max-height: 400px;
+        overflow-y: auto;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        font-family: monospace;
+        padding: 10px;
+        z-index: 9999;
+        display: none;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    `;
 
 			// 토글 버튼 생성
 			const toggleButton = document.createElement('button');
-			toggleButton.textContent = '▲';
-			toggleButton.style.cssText = 'position: absolute; top: 0; right: 10px; background: none; border: none; color: white; font-size: 16px; cursor: pointer;';
+			toggleButton.textContent = 'Show Logs';
+			toggleButton.style.cssText = `
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 10px;
+        cursor: pointer;
+        z-index: 10000;
+        border-radius: 5px;
+    `;
+
+			// 로그 지우기 버튼 생성
+			const clearButton = document.createElement('button');
+			clearButton.textContent = 'Clear Logs';
+			clearButton.style.cssText = `
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 3px;
+    `;
 
 			// 토글 기능 구현
-			let isMinimized = false;
+			let isVisible = false;
 			toggleButton.onclick = function () {
-				if (isMinimized) {
-					logContainer.style.maxHeight = '200px';
-					toggleButton.textContent = '▲';
-				} else {
-					logContainer.style.maxHeight = '30px';
-					toggleButton.textContent = '▼';
-				}
-				isMinimized = !isMinimized;
+				isVisible = !isVisible;
+				logContainer.style.display = isVisible ? 'block' : 'none';
+				toggleButton.textContent = isVisible ? 'Hide Logs' : 'Show Logs';
 			};
 
-			logContainer.appendChild(toggleButton);
+			// 로그 지우기 기능 구현
+			clearButton.onclick = function () {
+				logContainer.innerHTML = '';
+				logContainer.appendChild(clearButton);
+			};
+
+			logContainer.appendChild(clearButton);
+			document.body.appendChild(toggleButton);
 			document.body.appendChild(logContainer);
 
 			// console 메소드 오버라이드
@@ -382,9 +424,20 @@
 			function logToPage(message, type) {
 				const logElement = document.createElement('div');
 				logElement.textContent = `[${type.toUpperCase()}] ${message}`;
-				logElement.style.color = type === 'error' ? 'red' : type === 'warn' ? 'yellow' : 'white';
-				logContainer.appendChild(logElement);
-				logContainer.scrollTop = logContainer.scrollHeight;
+				logElement.style.cssText = `
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 3px;
+            background: ${type === 'error' ? 'rgba(255,0,0,0.2)' :
+						type === 'warn' ? 'rgba(255,255,0,0.2)' :
+							'rgba(255,255,255,0.1)'};
+        `;
+				logContainer.insertBefore(logElement, logContainer.firstChild);
+
+				// 로그가 100개를 초과하면 가장 오래된 로그 제거
+				if (logContainer.children.length > 101) { // clearButton을 포함하므로 101
+					logContainer.removeChild(logContainer.lastChild);
+				}
 			}
 
 			console.log = function () {
@@ -1097,112 +1150,6 @@
 			};
 			reader.readAsText(file);
 		}
-		// function load3DModel(file) {
-		// 	var reader = new FileReader();
-		// 	reader.onload = function (event) {
-		// 		var content = event.target.result;
-
-		// 		// Create a container for the canvas
-		// 		var canvasContainer = document.createElement('div');
-		// 		canvasContainer.style.width = '100%';
-		// 		canvasContainer.style.height = '400px';
-		// 		canvasContainer.style.position = 'relative';
-		// 		canvasContainer.style.background = '#f0f0f0';
-		// 		canvasContainer.style.marginTop = '10px';
-		// 		canvasContainer.setAttribute('data-obj-file', content);
-		// 		canvasContainer.setAttribute('data-obj-filename', file.name);  // 파일 이름 저장
-
-		// 		// Create a canvas element to render the 3D model
-		// 		var canvas = document.createElement('canvas');
-		// 		canvas.style.width = '100%';
-		// 		canvas.style.height = '100%';
-		// 		canvasContainer.appendChild(canvas);
-
-		// 		// Create a block blot for the canvas container
-		// 		var Block = Quill.import('blots/block/embed');
-		// 		class CanvasBlot extends Block {
-		// 			static create(value) {
-		// 				let node = super.create();
-		// 				node.setAttribute('style', value.style);
-		// 				node.setAttribute('data-obj-file', value.dataObjFile);
-		// 				node.setAttribute('data-obj-filename', value.dataObjFilename);  // 파일 이름 속성 추가
-		// 				node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
-		// 				return node;
-		// 			}
-		// 			static value(node) {
-		// 				return {
-		// 					style: node.getAttribute('style'),
-		// 					dataObjFile: node.getAttribute('data-obj-file'),
-		// 					dataObjFilename: node.getAttribute('data-obj-filename')  // 파일 이름 값 추가
-		// 				};
-		// 			}
-		// 		}
-		// 		CanvasBlot.blotName = 'canvas';
-		// 		CanvasBlot.tagName = 'div';
-		// 		Quill.register(CanvasBlot);
-
-		// 		// Insert the canvas container as a block blot
-		// 		var range = quill.getSelection(true);
-		// 		quill.insertEmbed(range.index, 'canvas', {
-		// 			style: canvasContainer.getAttribute('style'),
-		// 			dataObjFile: content,
-		// 			dataObjFilename: file.name  // 파일 이름 전달
-		// 		});
-		// 		// Initialize Three.js and render the 3D model after the canvas is appended to the document
-		// 		setTimeout(() => {
-		// 			var canvasElements = document.querySelectorAll('canvas');
-		// 			var lastCanvas = canvasElements[canvasElements.length - 1]; // Get the last canvas element
-
-		// 			var scene = new THREE.Scene();
-		// 			var camera = new THREE.PerspectiveCamera(75, lastCanvas.clientWidth / lastCanvas.clientHeight, 0.1, 1000);
-		// 			var renderer = new THREE.WebGLRenderer({ canvas: lastCanvas });
-		// 			renderer.setSize(lastCanvas.clientWidth, lastCanvas.clientHeight);
-
-		// 			// Add a light to the scene
-		// 			var ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-		// 			scene.add(ambientLight);
-
-		// 			var directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-		// 			directionalLight.position.set(5, 5, 5).normalize();
-		// 			scene.add(directionalLight);
-
-		// 			var loader = new THREE.OBJLoader();
-		// 			var object = loader.parse(content);
-
-		// 			// Apply a basic material to the object
-		// 			object.traverse(function (child) {
-		// 				if (child instanceof THREE.Mesh) {
-		// 					child.material = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
-		// 				}
-		// 			});
-
-		// 			scene.add(object);
-
-		// 			camera.position.z = 20;
-
-		// 			var animate = function () {
-		// 				requestAnimationFrame(animate);
-		// 				object.rotation.x += 0.01;
-		// 				object.rotation.y += 0.01;
-		// 				renderer.render(scene, camera);
-		// 			};
-
-		// 			animate();
-
-		// 			// Handle window resize
-		// 			window.addEventListener('resize', function () {
-		// 				var width = lastCanvas.clientWidth;
-		// 				var height = lastCanvas.clientHeight;
-		// 				renderer.setSize(width, height);
-		// 				camera.aspect = width / height;
-		// 				camera.updateProjectionMatrix();
-		// 			});
-		// 		}, 100); // Delay to ensure the canvas is in the DOM
-		// 	};
-		// 	reader.readAsText(file);
-		// }
-
-		// Function to upload .obj file and get its URL
 		async function uploadObjFile(file) {
 			//alert('call uploadObjFile');
 			const formData = new FormData();
