@@ -1041,7 +1041,44 @@
 			var reader = new FileReader();
 			reader.onload = function (event) {
 				var content = event.target.result;
-				// ... (기존 코드 유지)
+				// Create a container for the canvas
+				var canvasContainer = document.createElement('div');
+				canvasContainer.style.width = '100%';
+				canvasContainer.style.height = '400px';
+				canvasContainer.style.position = 'relative';
+				canvasContainer.style.background = '#f0f0f0';
+				canvasContainer.style.marginTop = '10px';
+				canvasContainer.setAttribute('data-obj-file', content);
+				canvasContainer.setAttribute('data-obj-filename', file.name);  // 파일 이름 저장
+
+				// Create a canvas element to render the 3D model
+				var canvas = document.createElement('canvas');
+				canvas.style.width = '100%';
+				canvas.style.height = '100%';
+				canvasContainer.appendChild(canvas);
+
+				// Create a block blot for the canvas container
+				var Block = Quill.import('blots/block/embed');
+				class CanvasBlot extends Block {
+					static create(value) {
+						let node = super.create();
+						node.setAttribute('style', value.style);
+						node.setAttribute('data-obj-file', value.dataObjFile);
+						node.setAttribute('data-obj-filename', value.dataObjFilename);  // 파일 이름 속성 추가
+						node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
+						return node;
+					}
+					static value(node) {
+						return {
+							style: node.getAttribute('style'),
+							dataObjFile: node.getAttribute('data-obj-file'),
+							dataObjFilename: node.getAttribute('data-obj-filename')  // 파일 이름 값 추가
+						};
+					}
+				}
+				CanvasBlot.blotName = 'canvas';
+				CanvasBlot.tagName = 'div';
+				Quill.register(CanvasBlot);
 
 				// Insert the canvas container as a block blot
 				var range = quill.getSelection(true);
