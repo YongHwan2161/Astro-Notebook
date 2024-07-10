@@ -22,6 +22,11 @@
 #include <functional>
 #include <regex>
 #include <random>
+#include <filesystem>
+#include <nlohmann/json.hpp>
+
+namespace fs = std::filesystem;
+using json = nlohmann::json;
 
 const int PORT = 35500;
 const int BUFFER_SIZE = 2048;
@@ -31,6 +36,8 @@ std::unordered_map<std::string, std::string> user_data;
 sqlite3 *db;
 const std::string UPLOAD_DIR = "uploads/";
 const std::string UPLOAD_IMAGE_DIR = "images/";
+const std::string UPLOAD_OBJ_DIR = "uploads/objs/"; // .obj 파일을 저장할 디렉토리 경로
+const std::string UPLOAD_ROOT_DIR = "./";
 
 const std::string base64_chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -38,6 +45,7 @@ const std::string base64_chars =
     "0123456789+/";
 
 const std::string SECRET_KEY = "your_secret_key";
+
 std::string base64_encode(unsigned char const *bytes_to_encode, unsigned int in_len)
 {
     std::string ret;
@@ -166,21 +174,69 @@ std::string base64_url_decode(const std::string &input)
 
     return base64_decode(base64.c_str(), base64.size());
 }
-
+std::string urlDecode(const std::string &encoded)
+{
+    std::string decoded;
+    char ch;
+    int i, ii;
+    for (i = 0; i < encoded.length(); i++)
+    {
+        if (int(encoded[i]) == 37)
+        {
+            sscanf(encoded.substr(i + 1, 2).c_str(), "%x", &ii);
+            ch = static_cast<char>(ii);
+            decoded += ch;
+            i = i + 2;
+        }
+        else
+        {
+            decoded += encoded[i];
+        }
+    }
+    return decoded;
+}
+std::string url_decode(const std::string &encoded)
+{
+    std::string result;
+    for (size_t i = 0; i < encoded.length(); ++i)
+    {
+        if (encoded[i] == '%' && i + 2 < encoded.length())
+        {
+            int value;
+            std::istringstream is(encoded.substr(i + 1, 2));
+            if (is >> std::hex >> value)
+            {
+                result += static_cast<char>(value);
+                i += 2;
+            }
+            else
+            {
+                result += encoded[i];
+            }
+        }
+        else if (encoded[i] == '+')
+        {
+            result += ' ';
+        }
+        else
+        {
+            result += encoded[i];
+        }
+    }
+    return result;
+}
 std::string sha1(const std::string &str)
 {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(reinterpret_cast<const unsigned char *>(str.c_str()), str.size(), hash);
     return std::string(reinterpret_cast<char *>(hash), SHA_DIGEST_LENGTH);
 }
-
 std::string generate_websocket_accept_key(const std::string &client_key)
 {
     std::string magic_key = client_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     std::string hash = sha1(magic_key);
     return base64_url_encode(reinterpret_cast<const unsigned char *>(hash.c_str()), hash.size());
 }
-
 std::string read_file(const std::string &file_path)
 {
     std::ifstream file(file_path);
@@ -192,14 +248,13 @@ std::string read_file(const std::string &file_path)
     buffer << file.rdbuf();
     return buffer.str();
 }
-
 void send_html(int client_socket, const std::string &file_path)
 {
     std::string html_content = read_file(file_path);
     if (html_content.empty())
     {
         std::cerr << "Failed to read " << file_path << std::endl;
-        close(client_socket);
+        // close(client_socket);
         return;
     }
 
@@ -239,10 +294,9 @@ void send_html(int client_socket, const std::string &file_path)
     //     }
     // }
 
-    shutdown(client_socket, SHUT_RDWR);
-    close(client_socket);
+    // shutdown(client_socket, SHUT_RDWR);
+    // close(client_socket);
 }
-
 void handle_websocket_connection(int client_socket, const std::string &client_key)
 {
     std::string accept_key = generate_websocket_accept_key(client_key);
@@ -271,7 +325,7 @@ void handle_websocket_connection(int client_socket, const std::string &client_ke
             break; // Exit the loop if sending fails
         }
     }
-    close(client_socket);
+    // close(client_socket);
 }
 // URL 인코딩된 데이터 파싱 함수
 std::unordered_map<std::string, std::string> parse_urlencoded(const std::string &body)
@@ -319,6 +373,15 @@ void init_database()
         "author TEXT NOT NULL, "
         "timestamp TEXT NOT NULL);";
 
+    const char *sql_create_comments_table =
+        "CREATE TABLE IF NOT EXISTS comments ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "post_id INTEGER NOT NULL, "
+        "author TEXT NOT NULL, "
+        "content TEXT NOT NULL, "
+        "timestamp TEXT NOT NULL, "
+        "FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE);";
+
     char *err_msg = nullptr;
 
     rc = sqlite3_exec(db, sql_create_users_table, 0, 0, &err_msg);
@@ -347,7 +410,20 @@ void init_database()
         std::cout << "Posts table created successfully" << std::endl;
     }
 
-    // Check if 'timestamp' column exists
+    rc = sqlite3_exec(db, sql_create_comments_table, 0, 0, &err_msg);
+    if (rc != SQLITE_OK)
+    {
+        std::cerr << "SQL error: " << err_msg << std::endl;
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        exit(1);
+    }
+    else
+    {
+        std::cout << "Comments table created successfully" << std::endl;
+    }
+
+    // Check if 'timestamp' column exists in posts table
     std::string sql_check_column = "PRAGMA table_info(posts);";
     sqlite3_stmt *stmt;
     rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
@@ -368,20 +444,103 @@ void init_database()
         }
     }
     sqlite3_finalize(stmt);
-    char *error_message = 0;
+
     // Add 'timestamp' column if it does not exist
     if (!timestamp_exists)
     {
         std::string sql_add_column = "ALTER TABLE posts ADD COLUMN timestamp TEXT;";
-        rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &error_message);
+        rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &err_msg);
         if (rc != SQLITE_OK)
         {
-            std::cerr << "SQL error (add column): " << error_message << std::endl;
-            sqlite3_free(error_message);
+            std::cerr << "SQL error (add column): " << err_msg << std::endl;
+            sqlite3_free(err_msg);
             exit(EXIT_FAILURE);
         }
     }
 }
+// void init_database()
+// {
+//     int rc = sqlite3_open("users.db", &db);
+//     if (rc)
+//     {
+//         std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
+//         exit(1);
+//     }
+//     else
+//     {
+//         std::cout << "Opened database successfully" << std::endl;
+//     }
+//     const char *sql_create_users_table =
+//         "CREATE TABLE IF NOT EXISTS USERS ("
+//         "ID INTEGER PRIMARY KEY AUTOINCREMENT, "
+//         "USERNAME TEXT NOT NULL, "
+//         "PASSWORD TEXT NOT NULL);";
+//     const char *sql_create_posts_table =
+//         "CREATE TABLE IF NOT EXISTS posts ("
+//         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+//         "title TEXT NOT NULL, "
+//         "content TEXT NOT NULL, "
+//         "author TEXT NOT NULL, "
+//         "timestamp TEXT NOT NULL);";
+//     char *err_msg = nullptr;
+//     rc = sqlite3_exec(db, sql_create_users_table, 0, 0, &err_msg);
+//     if (rc != SQLITE_OK)
+//     {
+//         std::cerr << "SQL error: " << err_msg << std::endl;
+//         sqlite3_free(err_msg);
+//         sqlite3_close(db);
+//         exit(1);
+//     }
+//     else
+//     {
+//         std::cout << "Users table created successfully" << std::endl;
+//     }
+//     rc = sqlite3_exec(db, sql_create_posts_table, 0, 0, &err_msg);
+//     if (rc != SQLITE_OK)
+//     {
+//         std::cerr << "SQL error: " << err_msg << std::endl;
+//         sqlite3_free(err_msg);
+//         sqlite3_close(db);
+//         exit(1);
+//     }
+//     else
+//     {
+//         std::cout << "Posts table created successfully" << std::endl;
+//     }
+//     // Check if 'timestamp' column exists
+//     std::string sql_check_column = "PRAGMA table_info(posts);";
+//     sqlite3_stmt *stmt;
+//     rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
+//     if (rc != SQLITE_OK)
+//     {
+//         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+//         exit(EXIT_FAILURE);
+//     }
+//     bool timestamp_exists = false;
+//     while (sqlite3_step(stmt) == SQLITE_ROW)
+//     {
+//         std::string column_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+//         if (column_name == "timestamp")
+//         {
+//             timestamp_exists = true;
+//             break;
+//         }
+//     }
+//     sqlite3_finalize(stmt);
+//     char *error_message = 0;
+//     // Add 'timestamp' column if it does not exist
+//     if (!timestamp_exists)
+//     {
+//         std::string sql_add_column = "ALTER TABLE posts ADD COLUMN timestamp TEXT;";
+//         rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &error_message);
+//         if (rc != SQLITE_OK)
+//         {
+//             std::cerr << "SQL error (add column): " << error_message << std::endl;
+//             sqlite3_free(error_message);
+//             exit(EXIT_FAILURE);
+//         }
+//     }
+// }
 // 회원가입 요청을 처리하는 함수
 void handle_signup(int client_socket, const std::string &body)
 {
@@ -448,9 +607,8 @@ void handle_signup(int client_socket, const std::string &body)
                                response_body;
         send(client_socket, response.c_str(), response.size(), 0);
     }
-    close(client_socket);
+    // close(client_socket);
 }
-
 // 사용자 정보를 데이터베이스에서 확인하는 함수
 bool verify_user(const std::string &username, const std::string &password)
 {
@@ -476,7 +634,6 @@ bool verify_user(const std::string &username, const std::string &password)
     sqlite3_finalize(stmt);
     return false;
 }
-
 std::string hmac_sha256(const std::string &key, const std::string &data)
 {
     unsigned char *digest;
@@ -484,7 +641,6 @@ std::string hmac_sha256(const std::string &key, const std::string &data)
     digest = HMAC(EVP_sha256(), key.c_str(), key.size(), (unsigned char *)data.c_str(), data.size(), NULL, NULL);
     return std::string(reinterpret_cast<char *>(digest), len);
 }
-
 std::string create_jwt(const std::string &username, const std::string &secret_key)
 {
     // Header
@@ -514,7 +670,6 @@ std::string create_jwt(const std::string &username, const std::string &secret_ke
     // JWT
     return header_base64 + "." + payload_base64 + "." + signature_base64;
 }
-
 // 로그인 요청을 처리하는 함수
 void handle_login(int client_socket, const std::string &body)
 {
@@ -565,9 +720,8 @@ void handle_login(int client_socket, const std::string &body)
                                response_body;
         send(client_socket, response.c_str(), response.size(), 0);
     }
-    close(client_socket);
+    // close(client_socket);
 }
-
 // 사용자 이름이 데이터베이스에 있는지 확인하는 함수
 bool is_username_taken(const std::string &username)
 {
@@ -593,7 +747,6 @@ bool is_username_taken(const std::string &username)
     sqlite3_finalize(stmt);
     return false;
 }
-
 // 아이디 중복 확인 요청을 처리하는 함수
 void handle_check_username(int client_socket, const std::string &body)
 {
@@ -636,15 +789,42 @@ void handle_check_username(int client_socket, const std::string &body)
                                response_body;
         send(client_socket, response.c_str(), response.size(), 0);
     }
-    close(client_socket);
+    // close(client_socket);
 }
 // 사용자 수를 데이터베이스에서 가져오는 함수
-int get_user_count()
+void send_json_response2(int client_socket, int status_code, const std::string& status_message, const json& response_json)
+{
+    std::string json_str = response_json.dump();
+    std::ostringstream response_stream;
+    response_stream << "HTTP/1.1 " << status_code << " " << status_message << "\r\n";
+    response_stream << "Content-Type: application/json\r\n";
+    response_stream << "Content-Length: " << json_str.length() << "\r\n";
+    response_stream << "\r\n";
+    response_stream << json_str;
+
+    std::string response = response_stream.str();
+
+    // 디버깅: 전송할 응답 출력
+    std::cout << "Sending response:\n" << response << std::endl;
+
+    ssize_t bytes_sent = send(client_socket, response.c_str(), response.length(), 0);
+    
+    // 디버깅: 전송된 바이트 수 확인
+    std::cout << "Bytes sent: " << bytes_sent << " out of " << response.length() << std::endl;
+
+    if (bytes_sent != static_cast<ssize_t>(response.length())) {
+        std::cerr << "Failed to send full response" << std::endl;
+    }
+}
+// 사용자 수를 가져오는 함수
+std::pair<int, std::string> get_user_count()
 {
     const char *sql_count = "SELECT COUNT(*) FROM USERS;";
     sqlite3_stmt *stmt;
     int user_count = 0;
-    int rc = sqlite3_prepare_v2(db, sql_count, -1, &stmt, 0);
+    std::string error_message;
+
+    int rc = sqlite3_prepare_v2(db, sql_count, -1, &stmt, nullptr);
     if (rc == SQLITE_OK)
     {
         rc = sqlite3_step(stmt);
@@ -652,27 +832,48 @@ int get_user_count()
         {
             user_count = sqlite3_column_int(stmt, 0);
         }
+        else
+        {
+            error_message = "Failed to fetch user count: " + std::string(sqlite3_errmsg(db));
+        }
         sqlite3_finalize(stmt);
     }
     else
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl; 
+        error_message = "Failed to prepare statement: " + std::string(sqlite3_errmsg(db));
     }
-    return user_count;
+
+    return {user_count, error_message};
 }
 // 사용자 수 요청을 처리하는 함수
 void handle_user_count_request(int client_socket)
 {
-    int user_count = get_user_count();
-    std::string response_body = std::to_string(user_count);
-    std::string response = "HTTP/1.1 200 OK\r\n"
-                           "Content-Type: text/plain\r\n"
-                           "Content-Length: " +
-                           std::to_string(response_body.size()) + "\r\n"
-                                                                  "Connection: close\r\n\r\n" +
-                           response_body;
-    send(client_socket, response.c_str(), response.size(), 0);
-    close(client_socket);
+    json response_json;
+    int status_code = 200;
+    std::string status_message = "OK";
+
+    auto [user_count, error_message] = get_user_count();
+
+    // 디버깅: 데이터베이스 쿼리 결과 출력
+    std::cout << "User count: " << user_count << ", Error message: " << error_message << std::endl;
+
+    if (error_message.empty())
+    {
+        response_json["success"] = true;
+        response_json["user_count"] = user_count;
+    }
+    else
+    {
+        status_code = 500;
+        status_message = "Internal Server Error";
+        response_json["success"] = false;
+        response_json["error"] = error_message;
+    }
+
+    // 디버깅: 생성된 JSON 출력
+    std::cout << "Generated JSON: " << response_json.dump() << std::endl;
+
+    send_json_response2(client_socket, status_code, status_message, response_json);
 }
 // 파일 업로드 요청을 처리하는 함수
 void handle_file_upload(int client_socket, const std::string &boundary, int bytes_received)
@@ -722,7 +923,7 @@ void handle_file_upload(int client_socket, const std::string &boundary, int byte
                            "Connection: close\r\n\r\n"
                            "Success";
     send(client_socket, response.c_str(), response.size(), 0);
-    close(client_socket);
+    // close(client_socket);
 }
 // 파일 다운로드 요청을 처리하는 함수
 void handle_file_download(int client_socket, const std::string &filename)
@@ -761,7 +962,7 @@ void handle_file_download(int client_socket, const std::string &filename)
     }
 
     infile.close();
-    close(client_socket);
+    // close(client_socket);
 }
 // 파일 목록 요청을 처리하는 함수
 void handle_file_list_request(int client_socket)
@@ -802,7 +1003,6 @@ void handle_file_list_request(int client_socket)
                                                                   "Connection: close\r\n\r\n" +
                            response_body;
     send(client_socket, response.c_str(), response.size(), 0);
-    close(client_socket);
 }
 void send_image(int client_socket, const std::string &file_path)
 {
@@ -859,6 +1059,7 @@ void send_js(int client_socket, const std::string &file_path)
     send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
+    // close(client_socket);
 }
 void send_css(int client_socket, const std::string &file_path)
 {
@@ -887,6 +1088,7 @@ void send_css(int client_socket, const std::string &file_path)
     send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
+    // close(client_socket);
 }
 void send_font(int client_socket, const std::string &file_path, const std::string &content_type)
 {
@@ -916,6 +1118,7 @@ void send_font(int client_socket, const std::string &file_path, const std::strin
     send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
+    // close(client_socket);
 }
 std::string get_font_content_type(const std::string &file_extension)
 {
@@ -932,6 +1135,36 @@ std::string get_font_content_type(const std::string &file_extension)
     if (file_extension == ".woff2")
         return "font/woff2";
     return "application/octet-stream";
+}
+void send_obj(int client_socket, const std::string &file_path)
+{
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file)
+    {
+        std::string not_found_response = "HTTP/1.1 404 Not Found\r\n"
+                                         "Content-Type: text/plain\r\n"
+                                         "Content-Length: 13\r\n"
+                                         "Connection: close\r\n\r\n"
+                                         "404 Not Found";
+        send(client_socket, not_found_response.c_str(), not_found_response.size(), 0);
+        // close(client_socket);
+        return;
+    }
+
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    std::string file_content = oss.str();
+
+    std::string header = "HTTP/1.1 200 OK\r\n"
+                         "Content-Type: application/octet-stream\r\n"
+                         "Content-Length: " +
+                         std::to_string(file_content.size()) + "\r\n"
+                                                               "Connection: close\r\n\r\n";
+    send(client_socket, header.c_str(), header.size(), 0);
+    send(client_socket, file_content.c_str(), file_content.size(), 0);
+
+    file.close();
+    // close(client_socket);
 }
 // JSON 파싱 함수
 std::map<std::string, std::string> parse_json(const std::string &json_str)
@@ -993,6 +1226,48 @@ std::map<std::string, std::string> parse_json(const std::string &json_str)
 
     return json_map;
 }
+std::string json_escape(const std::string &s)
+{
+    std::ostringstream o;
+    for (auto c = s.cbegin(); c != s.cend(); c++)
+    {
+        switch (*c)
+        {
+        case '"':
+            o << "\\\"";
+            break;
+        case '\\':
+            o << "\\\\";
+            break;
+        case '\b':
+            o << "\\b";
+            break;
+        case '\f':
+            o << "\\f";
+            break;
+        case '\n':
+            o << "\\n";
+            break;
+        case '\r':
+            o << "\\r";
+            break;
+        case '\t':
+            o << "\\t";
+            break;
+        default:
+            if ('\x00' <= *c && *c <= '\x1f')
+            {
+                o << "\\u"
+                  << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(*c);
+            }
+            else
+            {
+                o << *c;
+            }
+        }
+    }
+    return o.str();
+}
 bool verify_jwt(const std::string &token, const std::string &secret_key, std::string &username)
 {
     size_t first_dot = token.find('.');
@@ -1028,7 +1303,6 @@ bool verify_jwt(const std::string &token, const std::string &secret_key, std::st
     username = payload["username"].asString();
     return true;
 }
-
 std::unordered_map<std::string, std::string> parse_query_params(const std::string &query)
 {
     std::unordered_map<std::string, std::string> params;
@@ -1063,6 +1337,7 @@ void handle_verify_token(int client_socket, const std::string &body)
     }
     std::cerr << response.str() << std::endl;
     send(client_socket, response.str().c_str(), response.str().length(), 0);
+    // close(client_socket);
 }
 // Function to get current timestamp in milliseconds
 std::string get_current_timestamp()
@@ -1071,7 +1346,6 @@ std::string get_current_timestamp()
     auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
     return std::to_string(milliseconds);
 }
-
 // Function to generate a random number
 std::string generate_random_number()
 {
@@ -1080,7 +1354,6 @@ std::string generate_random_number()
     std::uniform_int_distribution<int> dist(100000, 999999);
     return std::to_string(dist(mt));
 }
-
 // Function to save an image from base64 data
 std::string save_image(const std::string &base64_data, const std::string &output_path, const std::string &extension)
 {
@@ -1093,29 +1366,6 @@ std::string save_image(const std::string &base64_data, const std::string &output
     out_file.close();
     return file_path;
 }
-// std::string process_content_and_save_images(const std::string &content, const std::string &output_path)
-// {
-//     std::regex base64_regex(R"(data/[^;]+;base64,([^>]+))");
-//     std::string processed_content = content;
-//     std::smatch match;
-//     std::string::const_iterator searchStart(processed_content.cbegin());
-//     while (std::regex_search(searchStart, processed_content.cend(), match, base64_regex))
-//     {
-//         std::string base64_data = match[1].str();
-//         std::string file_path = save_image(base64_data, output_path);
-
-//         std::string quoted_file_path = file_path + "\"";
-//         // Replace the base64 data with the file path in processed_content
-//         processed_content.replace(match.position(0), match.length(0), quoted_file_path);
-
-//         // Update searchStart to continue searching after the replacement
-//         searchStart = processed_content.begin() + match.position(0) + quoted_file_path.length();
-//     }
-
-//     return processed_content;
-// }
-
-// Function to process content and save images
 std::string process_content_and_save_images(const std::string &content, const std::string &output_path)
 {
     std::string processed_content = content;
@@ -1161,32 +1411,6 @@ std::string process_content_and_save_images(const std::string &content, const st
 
     return processed_content;
 }
-// Function to process content and save images
-// std::string process_content_and_save_images(const std::string &content, const std::string &output_path)
-// {
-//     std::regex base64_regex(R"(data:image\/([^;]+);base64,([^>]+))");
-//     std::string processed_content = content;
-//     std::smatch match;
-//     std::string::const_iterator searchStart(processed_content.cbegin());
-
-//     while (std::regex_search(searchStart, processed_content.cend(), match, base64_regex))
-//     {
-//         std::string extension = match[1].str();   // Extract image extension
-//         std::string base64_data = match[2].str(); // Extract base64 data
-//         std::string file_path = save_image(base64_data, output_path, extension);
-
-//         // Create the replacement string with the file path
-//         std::string quoted_file_path = file_path + "\"";
-
-//         // Replace the base64 data with the file path in processed_content
-//         processed_content.replace(match.position(0), match.length(0), quoted_file_path);
-
-//         // Update searchStart to continue searching after the replacement
-//         searchStart = processed_content.begin() + match.position(0) + quoted_file_path.length();
-//     }
-
-//     return processed_content;
-// }
 // Function to escape JSON string
 std::string escape_json_string(const std::string &input)
 {
@@ -1279,6 +1503,7 @@ void save_post(int client_socket, const std::string &body)
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
     std::cerr << "save_post success!" << std::endl;
     send(client_socket, response.c_str(), response.length(), 0);
+    // close(client_socket);
 }
 // Function to replace all occurrences of a substring with another substring in a string
 void replace_all(std::string &str, const std::string &from, const std::string &to)
@@ -1290,7 +1515,6 @@ void replace_all(std::string &str, const std::string &from, const std::string &t
         start_pos += to.length();
     }
 }
-
 void handle_get_posts(int client_socket)
 {
     std::string sql = "SELECT id, title, content, author, timestamp FROM posts;";
@@ -1330,6 +1554,41 @@ void handle_get_posts(int client_socket)
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
     send(client_socket, response.c_str(), response.length(), 0);
+    // close(client_socket);
+}
+std::vector<std::string> getImagesList(const std::string &directory)
+{
+    std::vector<std::string> images;
+    for (const auto &entry : fs::directory_iterator(directory))
+    {
+        if (entry.is_regular_file())
+        {
+            images.push_back(entry.path().filename().string());
+        }
+    }
+    return images;
+}
+void handle_get_images(int client_socket)
+{
+    std::vector<std::string> images = getImagesList("./images");
+    Json::Value json_images(Json::arrayValue);
+    for (const auto &image : images)
+    {
+        json_images.append(image);
+    }
+
+    Json::StreamWriterBuilder writer;
+    std::string response_body = Json::writeString(writer, json_images);
+
+    std::string response = "HTTP/1.1 200 OK\r\n";
+    response += "Content-Type: application/json\r\n";
+    response += "Content-Length: " + std::to_string(response_body.length()) + "\r\n";
+    response += "Connection: close\r\n";
+    response += "\r\n";
+    response += response_body;
+
+    send(client_socket, response.c_str(), response.length(), 0);
+    // close(client_socket);
 }
 void handle_delete_post(int client_socket, const std::string &request_body)
 {
@@ -1373,6 +1632,7 @@ void handle_delete_post(int client_socket, const std::string &request_body)
     }
 
     std::string author = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+    author = urlDecode(author);
     sqlite3_finalize(stmt);
 
     if (author != username)
@@ -1409,6 +1669,7 @@ void handle_delete_post(int client_socket, const std::string &request_body)
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
     send(client_socket, response.c_str(), response.length(), 0);
+    // close(client_socket);
 }
 std::string parseMultipartData(const std::string &data, std::string &filename)
 {
@@ -1431,33 +1692,656 @@ std::string parseMultipartData(const std::string &data, std::string &filename)
 
     return data.substr(file_start_pos, file_end_boundary_pos - file_start_pos);
 }
-void handleUploadImage(int client_socket, const std::string &request_body)
-{
-    // Parse the multipart data to extract the file content and filename
+// 공통 파일 업로드 함수
+bool uploadFile(const std::string& content, const std::string& filename, const std::string& directory) {
+    std::string filepath = directory + filename;
+    std::ofstream outfile(filepath, std::ios::binary);
+    if (!outfile) {
+        return false;
+    }
+    outfile.write(content.c_str(), content.size());
+    outfile.close();
+    return true;
+}
+// 이미지 업로드 핸들러
+void handleUploadImage(int client_socket, const std::string &request_body) {
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
-    if (filename.empty() || file_content.empty())
-    {
-        std::string response = "HTTP/1.1 400 Bad Request\r\n\r\n";
-        send(client_socket, response.c_str(), response.length(), 0);
-        close(client_socket);
+    if (filename.empty() || file_content.empty()) {
+        send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
         return;
     }
 
-    // Save the file to the upload folder
-    std::string filepath = UPLOAD_IMAGE_DIR + filename;
-    std::ofstream outfile(filepath, std::ios::binary);
-    outfile.write(file_content.c_str(), file_content.size());
-    outfile.close();
+    if (uploadFile(file_content, filename, UPLOAD_IMAGE_DIR)) {
+        send_json_response2(client_socket, 200, "OK", {{"success", true}, {"url", "images/" + filename}});
+    } else {
+        send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
+    }
+}
+// OBJ 파일 업로드 핸들러
+void handleUploadObj(int client_socket, const std::string &request_body) {
+    std::string filename;
+    std::string file_content = parseMultipartData(request_body, filename);
 
-    // Send the response with the file URL
-    std::string response = "HTTP/1.1 200 OK\r\n";
-    response += "Content-Type: text/plain\r\n\r\n";
-    response += "images/" + filename;
+    if (filename.empty() || file_content.empty()) {
+        send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
+        return;
+    }
+
+    if (uploadFile(file_content, filename, UPLOAD_OBJ_DIR)) {
+        send_json_response2(client_socket, 200, "OK", {{"success", true}, {"url", "uploads/objs/" + filename}});
+    } else {
+        send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
+    }
+}
+// 일반 파일 업로드 핸들러
+void handleUploadFiles(int client_socket, const std::string &request_body) {
+    std::string filename;
+    std::string file_content = parseMultipartData(request_body, filename);
+
+    if (filename.empty() || file_content.empty()) {
+        send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
+        return;
+    }
+
+    if (uploadFile(file_content, filename, UPLOAD_ROOT_DIR)) {
+        send_json_response2(client_socket, 200, "OK", {{"success", true}});
+    } else {
+        send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
+    }
+}
+void handle_get_comments(int client_socket, const std::string &query)
+{
+    // Extract postId from query string
+    std::string postIdStr;
+    size_t pos = query.find("postId=");
+    if (pos != std::string::npos)
+    {
+        postIdStr = query.substr(pos + 7);
+    }
+
+    int postId;
+    try
+    {
+        postId = std::stoi(postIdStr);
+    }
+    catch (const std::invalid_argument &e)
+    {
+        std::cerr << "Invalid postId: " << postIdStr << std::endl;
+        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Invalid postId\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    std::string sql = "SELECT id, author, content, timestamp FROM comments WHERE post_id = ?;";
+    sqlite3_stmt *stmt;
+
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0) != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    sqlite3_bind_int(stmt, 1, postId);
+
+    Json::Value comments(Json::arrayValue);
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        Json::Value comment;
+        comment["id"] = sqlite3_column_int(stmt, 0);
+        comment["author"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+        comment["text"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
+        comment["timestamp"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+        comments.append(comment);
+    }
+
+    sqlite3_finalize(stmt);
+
+    Json::Value jsonResponse;
+    jsonResponse["comments"] = comments;
+    Json::StreamWriterBuilder writer;
+    std::string json_response = Json::writeString(writer, jsonResponse);
+
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
     send(client_socket, response.c_str(), response.length(), 0);
+}
+void handle_edit_comment(int client_socket, const std::string &request_body)
+{
+    Json::Value jsonData;
+    Json::CharReaderBuilder readerBuilder;
+    std::string errs;
+    std::istringstream iss(request_body);
 
-    close(client_socket);
+    if (!Json::parseFromStream(readerBuilder, iss, &jsonData, &errs))
+    {
+        std::cerr << "Failed to parse JSON: " << errs << std::endl;
+        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+    std::string IdStr = jsonData["id"].asString();
+    int commentId = std::stoi(IdStr);
+    std::string newText = jsonData["newText"].asString();
+
+    // First, get the postId of the comment to be edited
+    std::string getPostIdSql = "SELECT post_id FROM comments WHERE id = ?;";
+    sqlite3_stmt *getPostIdStmt;
+    if (sqlite3_prepare_v2(db, getPostIdSql.c_str(), -1, &getPostIdStmt, 0) != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    sqlite3_bind_int(getPostIdStmt, 1, commentId);
+    int postId = -1;
+    if (sqlite3_step(getPostIdStmt) == SQLITE_ROW)
+    {
+        postId = sqlite3_column_int(getPostIdStmt, 0);
+    }
+    sqlite3_finalize(getPostIdStmt);
+
+    if (postId == -1)
+    {
+        std::cerr << "Failed to find postId for comment: " << commentId << std::endl;
+        std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Comment not found\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    // Get current timestamp
+    std::string timestamp = get_current_timestamp();
+
+    // Update the comment content and timestamp
+    std::string sql = "UPDATE comments SET content = ?, timestamp = ? WHERE id = ?;";
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0) != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    sqlite3_bind_text(stmt, 1, newText.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, timestamp.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 3, commentId);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+    {
+        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+    }
+    else
+    {
+        Json::Value responseJson;
+        responseJson["success"] = true;
+        responseJson["postId"] = postId;
+
+        Json::StreamWriterBuilder writer;
+        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + Json::writeString(writer, responseJson);
+        send(client_socket, response.c_str(), response.length(), 0);
+    }
+
+    sqlite3_finalize(stmt);
+    // close(client_socket);
+}
+void handle_delete_comment(int client_socket, const std::string &request_body)
+{
+    Json::Value jsonData;
+    Json::CharReaderBuilder readerBuilder;
+    std::string errs;
+    std::istringstream iss(request_body);
+
+    if (!Json::parseFromStream(readerBuilder, iss, &jsonData, &errs))
+    {
+        std::cerr << "Failed to parse JSON: " << errs << std::endl;
+        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+    std::string commentIdStr = jsonData["id"].asString();
+    int commentId = std::stoi(commentIdStr);
+
+    // First, get the postId of the comment to be edited
+    std::string getPostIdSql = "SELECT post_id FROM comments WHERE id = ?;";
+    sqlite3_stmt *getPostIdStmt;
+    if (sqlite3_prepare_v2(db, getPostIdSql.c_str(), -1, &getPostIdStmt, 0) != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    sqlite3_bind_int(getPostIdStmt, 1, commentId);
+    int postId = -1;
+    if (sqlite3_step(getPostIdStmt) == SQLITE_ROW)
+    {
+        postId = sqlite3_column_int(getPostIdStmt, 0);
+    }
+    sqlite3_finalize(getPostIdStmt);
+
+    if (postId == -1)
+    {
+        std::cerr << "Failed to find postId for comment: " << commentId << std::endl;
+        std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Comment not found\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    std::string sql = "DELETE FROM comments WHERE id = ?;";
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0) != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    sqlite3_bind_int(stmt, 1, commentId);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+    {
+        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+    }
+    else
+    {
+        Json::Value responseJson;
+        responseJson["success"] = true;
+        responseJson["postId"] = postId;
+
+        Json::StreamWriterBuilder writer;
+        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + Json::writeString(writer, responseJson);
+        send(client_socket, response.c_str(), response.length(), 0);
+    }
+
+    sqlite3_finalize(stmt);
+    // close(client_socket);
+}
+void handle_add_comment(int client_socket, const std::string &request_body)
+{
+    Json::Value jsonData;
+    Json::CharReaderBuilder readerBuilder;
+    std::string errs;
+    std::istringstream iss(request_body);
+
+    if (!Json::parseFromStream(readerBuilder, iss, &jsonData, &errs))
+    {
+        std::cerr << "Failed to parse JSON: " << errs << std::endl;
+        // send error response
+        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    std::string postIdStr = jsonData["postId"].asString();
+    int postId;
+    std::istringstream(postIdStr) >> postId;
+
+    if (postId == 0 && postIdStr != "0")
+    {
+        std::cerr << "postId is not a valid integer" << std::endl;
+        // send error response
+        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"postId must be an integer\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+        return;
+    }
+
+    std::string commentText = jsonData["commentText"].asString();
+    std::string author = jsonData["author"].asString(); // Read author from JSON data
+
+    std::string sql = "INSERT INTO comments (post_id, author, content, timestamp) VALUES (?, ?, ?, ?);";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
+    sqlite3_bind_int(stmt, 1, postId);
+    sqlite3_bind_text(stmt, 2, author.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, commentText.c_str(), -1, SQLITE_STATIC);
+
+    // Get current timestamp
+    std::string timestamp = get_current_timestamp();
+    sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+    {
+        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
+        // send error response
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
+        send(client_socket, response.c_str(), response.length(), 0);
+    }
+    else
+    {
+        // send success response
+        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
+        send(client_socket, response.c_str(), response.length(), 0);
+    }
+
+    sqlite3_finalize(stmt);
+    // close(client_socket);
+}
+void send_json_response(int client_socket, int status_code, const std::string &status_message, const std::string &json_content)
+{
+    std::ostringstream response;
+    response << "HTTP/1.1 " << status_code << " " << status_message << "\r\n";
+    response << "Content-Type: application/json\r\n";
+    response << "Cache-Control: no-cache\r\n";
+    response << "Content-Length: " << json_content.length() << "\r\n";
+    response << "\r\n";
+    response << json_content;
+
+    std::string response_str = response.str();
+    ssize_t bytes_sent = send(client_socket, response_str.c_str(), response_str.length(), 0);
+    if (bytes_sent != static_cast<ssize_t>(response_str.length()))
+    {
+        std::cerr << "Failed to send full response. Sent " << bytes_sent << " out of " << response_str.length() << " bytes." << std::endl;
+    }
+}
+void handle_drive_contents(int client_socket, const std::string &query) {
+    std::string path = "/";
+    size_t path_pos = query.find("path=");
+    if (path_pos != std::string::npos)
+    {
+        path = query.substr(path_pos + 5);
+        size_t end_pos = path.find('&');
+        if (end_pos != std::string::npos)
+        {
+            path = path.substr(0, end_pos);
+        }
+    }
+
+    std::string decoded_path = url_decode(path);
+    std::string root_path = UPLOAD_ROOT_DIR;
+    std::string full_path = root_path + decoded_path;
+
+    // 디버깅: 경로 정보 출력
+    std::cerr << "Decoded path: " << decoded_path << std::endl;
+    std::cerr << "Full path: " << full_path << std::endl;
+
+    // 보안 검사
+    if (full_path.substr(0, root_path.length()) != root_path)
+    {
+        std::string error_json = "{\"error\": \"Access is not allowed\"}";
+        send_json_response(client_socket, 403, "Forbidden", error_json);
+        return;
+    }
+
+    std::ostringstream json;
+    json << "{\"contents\": [";
+
+    try
+    {
+        if (!fs::exists(full_path))
+        {
+            throw fs::filesystem_error("Directory does not exist", full_path, std::error_code());
+        }
+
+        bool first = true;
+        for (const auto &entry : fs::directory_iterator(full_path))
+        {
+            if (!first)
+            {
+                json << ",";
+            }
+            first = false;
+
+            std::string filename = json_escape(entry.path().filename().string());
+            std::string type = fs::is_directory(entry) ? "folder" : "file";
+
+            json << "{\"name\":\"" << filename << "\",\"type\":\"" << type << "\"}";
+
+            // 디버깅: 각 항목 정보 출력
+            std::cerr << "Added item: " << filename << " (type: " << type << ")" << std::endl;
+        }
+    }
+    catch (const fs::filesystem_error &e)
+    {
+        std::cerr << "Filesystem error: " << e.what() << std::endl;
+        std::string error_json = "{\"error\": \"" + json_escape(e.what()) + "\"}";
+        send_json_response(client_socket, 500, "Internal Server Error", error_json);
+        return;
+    }
+
+    json << "]}";
+
+    std::string json_str = json.str();
+
+    // 디버깅: 전송할 JSON 데이터 출력
+    std::cerr << "Sending JSON: " << json_str << std::endl;
+
+    send_json_response(client_socket, 200, "OK", json_str);
+}
+void handle_download_file(int client_socket, const std::string &query)
+{
+    std::string path = "/";
+    std::string name = "";
+    size_t path_pos = query.find("path=");
+    size_t name_pos = query.find("name=");
+
+    if (path_pos != std::string::npos)
+    {
+        path = query.substr(path_pos + 5);
+        size_t end_pos = path.find('&');
+        if (end_pos != std::string::npos)
+        {
+            path = path.substr(0, end_pos);
+        }
+    }
+
+    if (name_pos != std::string::npos)
+    {
+        name = query.substr(name_pos + 5);
+        size_t end_pos = name.find('&');
+        if (end_pos != std::string::npos)
+        {
+            name = name.substr(0, end_pos);
+        }
+    }
+
+    std::string decoded_path = url_decode(path);
+    std::string decoded_name = url_decode(name);
+    std::string root_path = UPLOAD_ROOT_DIR; // 실제 드라이브 루트 경로로 변경해야 함
+    std::string full_path = root_path + decoded_path + decoded_name;
+
+    // 보안 검사: 경로가 root_path 밖으로 나가지 않도록 확인
+    if (full_path.substr(0, root_path.length()) != root_path)
+    {
+        std::string error_response = "HTTP/1.1 403 Forbidden\r\n"
+                                     "Content-Type: text/plain\r\n"
+                                     "Content-Length: 21\r\n"
+                                     "\r\n"
+                                     "Access is not allowed";
+        send(client_socket, error_response.c_str(), error_response.length(), 0);
+        return;
+    }
+
+    // 파일 존재 여부 확인
+    if (!fs::exists(full_path) || !fs::is_regular_file(full_path))
+    {
+        std::string error_response = "HTTP/1.1 404 Not Found\r\n"
+                                     "Content-Type: text/plain\r\n"
+                                     "Content-Length: 14\r\n"
+                                     "\r\n"
+                                     "File not found";
+        send(client_socket, error_response.c_str(), error_response.length(), 0);
+        return;
+    }
+
+    // 파일 열기
+    std::ifstream file(full_path, std::ios::binary);
+    if (!file)
+    {
+        std::string error_response = "HTTP/1.1 500 Internal Server Error\r\n"
+                                     "Content-Type: text/plain\r\n"
+                                     "Content-Length: 25\r\n"
+                                     "\r\n"
+                                     "Error opening file";
+        send(client_socket, error_response.c_str(), error_response.length(), 0);
+        return;
+    }
+
+    // 파일 크기 확인
+    file.seekg(0, std::ios::end);
+    size_t file_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // HTTP 응답 헤더 생성
+    std::ostringstream header;
+    header << "HTTP/1.1 200 OK\r\n";
+    header << "Content-Type: application/octet-stream\r\n";
+    header << "Content-Disposition: attachment; filename=\"" << decoded_name << "\"\r\n";
+    header << "Content-Length: " << file_size << "\r\n";
+    header << "\r\n";
+    // 헤더 전송
+    std::string header_str = header.str();
+    send(client_socket, header_str.c_str(), header_str.length(), 0);
+
+    // 파일 내용 전송
+    std::vector<char> buffer(8192); // 8KB 버퍼
+    while (file.read(buffer.data(), buffer.size()))
+    {
+        send(client_socket, buffer.data(), file.gcount(), 0);
+    }
+    if (file.gcount() > 0)
+    {
+        send(client_socket, buffer.data(), file.gcount(), 0);
+    }
+
+    file.close();
+}
+void handle_delete_item(int client_socket, const std::string& request_body) {
+    json response;
+    try {
+        json request_data = json::parse(request_body);
+        
+        if (!request_data.contains("path") || !request_data.contains("name")) {
+            throw std::runtime_error("Missing 'path' or 'name' in request");
+        }
+
+        std::string path = request_data["path"];
+        std::string name = request_data["name"];
+        std::string root_path = UPLOAD_ROOT_DIR; // 실제 루트 경로로 변경해야 합니다
+        std::string full_path = root_path + path + name;
+
+        // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
+        if (full_path.substr(0, root_path.length()) != root_path) {
+            throw std::runtime_error("Access denied: Path is outside of allowed directory");
+        }
+
+        if (fs::exists(full_path)) {
+            if (fs::is_directory(full_path)) {
+                fs::remove_all(full_path);
+            } else {
+                fs::remove(full_path);
+            }
+            response["success"] = true;
+            response["message"] = "Item deleted successfully";
+        } else {
+            response["success"] = false;
+            response["message"] = "Item not found";
+        }
+
+        send_json_response2(client_socket, 200, "OK", response);
+    } catch (const std::exception& e) {
+        response["success"] = false;
+        response["message"] = e.what();
+        send_json_response2(client_socket, 400, "Bad Request", response);
+    }
+}
+void handle_rename_item(int client_socket, const std::string& request_body) {
+    json response;
+    try {
+        json request_data = json::parse(request_body);
+        
+        if (!request_data.contains("path") || !request_data.contains("oldName") || 
+            !request_data.contains("newName") || !request_data.contains("type")) {
+            throw std::runtime_error("Missing required fields in request");
+        }
+
+        std::string path = request_data["path"];
+        std::string old_name = request_data["oldName"];
+        std::string new_name = request_data["newName"];
+        std::string type = request_data["type"];
+        std::string root_path = UPLOAD_ROOT_DIR; // 실제 루트 경로로 변경해야 합니다
+        std::string old_full_path = root_path + path + old_name;
+        std::string new_full_path = root_path + path + new_name;
+
+        // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
+        if (old_full_path.substr(0, root_path.length()) != root_path ||
+            new_full_path.substr(0, root_path.length()) != root_path) {
+            throw std::runtime_error("Access denied: Path is outside of allowed directory");
+        }
+
+        // 파일/폴더 존재 여부 확인
+        if (!fs::exists(old_full_path)) {
+            throw std::runtime_error("Item does not exist");
+        }
+
+        // 새 이름의 파일/폴더가 이미 존재하는지 확인
+        if (fs::exists(new_full_path)) {
+            throw std::runtime_error("An item with the new name already exists");
+        }
+
+        // 이름 변경
+        fs::rename(old_full_path, new_full_path);
+
+        response["success"] = true;
+        response["message"] = "Item renamed successfully";
+
+    } catch (const std::exception& e) {
+        response["success"] = false;
+        response["message"] = e.what();
+    }
+
+    send_json_response2(client_socket, response["success"] ? 200 : 400, 
+                        response["success"] ? "OK" : "Bad Request", response);
+}
+void handle_create_folder(int client_socket, const std::string& request_body) {
+    json response;
+    try {
+        json request_data = json::parse(request_body);
+        
+        if (!request_data.contains("path") || !request_data.contains("name")) {
+            throw std::runtime_error("Missing required fields in request");
+        }
+
+        std::string path = request_data["path"];
+        std::string folder_name = request_data["name"];
+        std::string root_path = UPLOAD_ROOT_DIR; // 실제 루트 경로로 변경해야 합니다
+        std::string full_path = root_path + path + folder_name;
+
+        // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
+        if (full_path.substr(0, root_path.length()) != root_path) {
+            throw std::runtime_error("Access denied: Path is outside of allowed directory");
+        }
+
+        // 폴더가 이미 존재하는지 확인
+        if (fs::exists(full_path)) {
+            throw std::runtime_error("A folder with this name already exists");
+        }
+
+        // 폴더 생성
+        if (fs::create_directory(full_path)) {
+            response["success"] = true;
+            response["message"] = "Folder created successfully";
+        } else {
+            throw std::runtime_error("Failed to create folder");
+        }
+
+    } catch (const std::exception& e) {
+        response["success"] = false;
+        response["message"] = e.what();
+    }
+
+    send_json_response2(client_socket, response["success"] ? 200 : 400,
+                        response["success"] ? "OK" : "Bad Request", response);
 }
 std::unordered_map<std::string, std::function<void(int)>> get_routes = {
     {"/ws", [](int client_socket)
@@ -1468,9 +2352,9 @@ std::unordered_map<std::string, std::function<void(int)>> get_routes = {
     {"/usercount", handle_user_count_request},
     {"/filelist", handle_file_list_request},
     {"/posts", handle_get_posts},
+    {"/images", handle_get_images},
     // Add other GET routes here
 };
-
 std::unordered_map<std::string, std::function<void(int, const std::string &)>> post_routes = {
     {"/signup", handle_signup},
     {"/login", handle_login},
@@ -1478,65 +2362,98 @@ std::unordered_map<std::string, std::function<void(int, const std::string &)>> p
     {"/check-username", handle_check_username},
     {"/save_post", save_post},
     {"/delete_post", handle_delete_post},
-    {"upload_image", handleUploadImage},
+    {"/upload_image", handleUploadImage},
+    {"/upload_obj", handleUploadObj},
+    {"/upload-file", handleUploadFiles},
+    {"/add_comment", handle_add_comment},
+    {"/edit_comment", handle_edit_comment},
+    {"/delete_comment", handle_delete_comment},
+    {"/delete-item", handle_delete_item},
+    {"/rename-item", handle_rename_item},
+    {"/create-folder", handle_create_folder},
     // Add other POST routes here
 };
-
 std::unordered_map<std::string, std::function<void(int, const std::string &)>> static_routes = {
     {"/images", send_image},
     {"/assets/js", send_js},
     {"/assets/css", send_css},
+    {"/uploads/objs", send_obj},
     // {"/assets/html/generic.html", send_html},
-    {"/assets/html/elements.html", send_html},
-    {"/assets/html/starMap.html", send_html},
-    {"/assets/html/edit.html", send_html},
-    {"/assets/html/index.html", send_html},
+    // {"/assets/html/elements.html", send_html},
+    // {"/assets/html/starMap2.html", send_html},
+    // {"/assets/html/edit.html", send_html},
+    // {"/assets/html/index.html", send_html},
+    {"/assets/html", send_html},
 };
+// 쿼리를 처리하는 함수의 타입 정의
+using QueryHandler = std::function<void(int, const std::string &)>;
 
+// GET 요청을 처리하는 라우트 맵 정의
+std::unordered_map<std::string, QueryHandler> get_routes_with_query = {
+    {"/comments", handle_get_comments},
+    {"/drive-contents", handle_drive_contents},
+    {"/download-file", handle_download_file}};
 void handle_request(int client_socket, const std::string &request)
 {
     std::istringstream request_stream(request);
     std::string method, path, version;
     request_stream >> method >> path >> version;
+    std::string query;
+    size_t query_pos = path.find("?");
+    if (query_pos != std::string::npos)
+    {
+        query = path.substr(query_pos + 1);
+        path = path.substr(0, query_pos);
+    }
 
     if (method == "GET")
     {
-        auto route = get_routes.find(path);
-        if (route != get_routes.end())
+        // 먼저 쿼리를 사용하는 라우트를 확인
+        auto query_route = get_routes_with_query.find(path);
+        if (query_route != get_routes_with_query.end())
         {
-            route->second(client_socket);
+            query_route->second(client_socket, query);
         }
         else
         {
-            // Check static routes
-            for (const auto &entry : static_routes)
+            auto route = get_routes.find(path);
+            if (route != get_routes.end())
             {
-                if (path.find(entry.first) == 0)
-                {
-                    entry.second(client_socket, path.substr(1));
-                    return;
-                }
-            }
-            // Special case for fonts
-            if (path.find("/assets/fonts/") == 0)
-            {
-                std::string font_path = path.substr(1); // Remove leading '/'
-                size_t query_pos = font_path.find("?");
-                if (query_pos != std::string::npos)
-                {
-                    font_path = font_path.substr(0, query_pos);
-                }
-                std::string extension = font_path.substr(font_path.find_last_of("."));
-                std::string content_type = get_font_content_type(extension);
-                send_font(client_socket, font_path, content_type);
+                route->second(client_socket);
             }
             else
             {
+                // 여기에 정적 파일 처리나 404 응답 등을 추가할 수 있습니다.
+                // Check static routes
+                for (const auto &entry : static_routes)
+                {
+                    if (path.find(entry.first) == 0)
+                    {
+                        entry.second(client_socket, path.substr(1));
+                        return;
+                    }
+                }
+                // Special case for fonts
+                if (path.find("/assets/fonts/") == 0)
+                {
+                    std::string font_path = path.substr(1); // Remove leading '/'
+                    size_t query_pos = font_path.find("?");
+                    if (query_pos != std::string::npos)
+                    {
+                        font_path = font_path.substr(0, query_pos);
+                    }
+                    std::string extension = font_path.substr(font_path.find_last_of("."));
+                    std::string content_type = get_font_content_type(extension);
+                    send_font(client_socket, font_path, content_type);
+                }
+                else
+                {
+                    // Default route
+                    send_html(client_socket, "assets/html/index.html");
+                }
                 // Default route
                 send_html(client_socket, "assets/html/index.html");
             }
-            // Default route
-            send_html(client_socket, "assets/html/index.html");
         }
     }
     else if (method == "POST")
@@ -1562,25 +2479,7 @@ void handle_request(int client_socket, const std::string &request)
         }
     }
 }
-// void handle_client(int client_socket)
-// {
-//     char buffer[BUFFER_SIZE];
-//     int bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
 
-//     if (bytes_received > 0)
-//     {
-//         buffer[bytes_received] = '\0';
-//         std::string request(buffer);
-//         handle_request(client_socket, request);
-//     }
-//     if (bytes_received < 0)
-//     {
-//         perror("read failed");
-//         close(client_socket);
-//         return;
-//     }
-//     close(client_socket);
-// }
 void handle_client(int client_socket)
 {
     std::vector<char> buffer(BUFFER_SIZE);

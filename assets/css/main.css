@@ -4645,19 +4645,23 @@ body.is-mobile .banner>article {
 	border: 1px solid #ccc;
 	border-radius: 5px;
 }
+
 .hidden {
 	display: none;
 }
+
 #form1 {
 	display: none;
 }
+
 #posts-container {
 	width: 80%;
 	margin: 20px auto;
 	border-collapse: collapse;
 }
 
-#posts-container th, #posts-container td {
+#posts-container th,
+#posts-container td {
 	padding: 10px;
 	border: 1px solid #ddd;
 }
@@ -4702,4 +4706,108 @@ body.is-mobile .banner>article {
 
 .back-button:hover {
 	background-color: #0056b3;
+}
+
+.gallery img {
+	max-width: 100px;
+	margin: 5px;
+}
+
+#post-body img {
+	/* 게시글에 이미지가 포함된 경우 이미지 크기가 화면을 넘어가지 않도록 함 */
+	max-width: 100%;
+	height: auto;
+}
+
+.ql-editor {
+	position: relative;
+	overflow: visible !important;
+	/* Ensure that the overflow is visible */
+}
+.ql-toolbar .ql-formats {
+    display: flex;
+    align-items: top;
+}
+
+.ql-toolbar .ql-formats button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    text-transform: none; /* 소문자 유지 */
+    line-height: normal; /* 줄 간격을 기본값으로 설정 */
+    vertical-align: middle; /* 수직 정렬을 중간으로 설정 */
+    padding: 0; /* 여백 제거 */
+}
+
+.ql-toolbar .ql-formats button strong {
+    display: inline-block;
+    line-height: 1.2; /* 아이콘 텍스트의 줄 간격 조정 */
+    font-size: 14px; /* 아이콘 텍스트 크기 조정 */
+}
+#drive-content {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.drive-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px;
+    border-bottom: 1px solid #eee;
+    width: 100%;
+}
+
+.drive-item.grid {
+    width: calc(25% - 10px);
+    margin: 5px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    border: 1px solid #eee;
+    border-radius: 5px;
+}
+
+.drive-item-content {
+    display: flex;
+    align-items: center;
+}
+
+.drive-item.grid .drive-item-content {
+    flex-direction: column;
+}
+
+.drive-item-name {
+    margin-left: 10px;
+}
+
+.drive-item.grid .drive-item-name {
+    margin-left: 0;
+    margin-top: 5px;
+}
+
+.item-menu {
+    display: flex;
+}
+
+.item-menu button {
+    margin-left: 5px;
+    padding: 2px 5px;
+    font-size: 0.8em;
+}
+
+.drive-item.grid .item-menu {
+    margin-top: 5px;
+}
+.loading {
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+}
+.error {
+    color: red;
+    text-align: center;
+    padding: 20px;
 }

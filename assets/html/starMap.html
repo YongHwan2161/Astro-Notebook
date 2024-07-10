@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Title</title>
+    <title>Star Map</title>
     <!-- Font Awesome CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
@@ -22,7 +22,7 @@
     </style>
 </head>
 
-<body onload="start()">
+<body>
 
     <canvas id="canvas"></canvas>
 
@@ -39,7 +39,6 @@
     <script src="https://webgl2fundamentals.org/webgl/resources/m4.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gl-matrix@2.8.1/dist/gl-matrix-min.js"></script>
     <script src="https://webgl2fundamentals.org/webgl/resources/flattened-primitives.js"></script>
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
     <!-- stats.js -->
     <script>
         // stats.js - http://github.com/mrdoob/stats.js
@@ -61,12 +60,77 @@
                 b.fillRect(d, m, n, p); b.fillStyle = l; b.globalAlpha = .9; b.fillRect(d, m, n, p); return { dom: q, update: function (h, w) { c = Math.min(c, h); k = Math.max(k, h); b.fillStyle = l; b.globalAlpha = 1; b.fillRect(0, 0, r, m); b.fillStyle = f; b.fillText(g(h) + " " + e + " (" + g(c) + "-" + g(k) + ")", t, v); b.drawImage(q, d + a, m, n - a, p, d, m, n - a, p); b.fillRect(d + n - a, m, a, p); b.fillStyle = l; b.globalAlpha = .9; b.fillRect(d + n - a, m, a, g((1 - h / w) * p)) } }
             }; return f
         });
+		document.addEventListener('DOMContentLoaded', async () => {
+
+			// 로그를 표시할 컨테이너 생성
+			const logContainer = document.createElement('div');
+			logContainer.id = 'log-container';
+			logContainer.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.8); color: white; font-family: monospace; padding: 10px; z-index: 9999; transition: max-height 0.3s ease-out;';
+
+			// 토글 버튼 생성
+			const toggleButton = document.createElement('button');
+			toggleButton.textContent = '▲';
+			toggleButton.style.cssText = 'position: absolute; top: 0; right: 10px; background: none; border: none; color: white; font-size: 16px; cursor: pointer;';
+
+			// 토글 기능 구현
+			let isMinimized = false;
+			toggleButton.onclick = function () {
+				if (isMinimized) {
+					logContainer.style.maxHeight = '200px';
+					toggleButton.textContent = '▲';
+				} else {
+					logContainer.style.maxHeight = '30px';
+					toggleButton.textContent = '▼';
+				}
+				isMinimized = !isMinimized;
+			};
+
+			logContainer.appendChild(toggleButton);
+			document.body.appendChild(logContainer);
+
+			// console 메소드 오버라이드
+			const originalConsole = {
+				log: console.log,
+				error: console.error,
+				warn: console.warn,
+				info: console.info
+			};
+
+			function logToPage(message, type) {
+				const logElement = document.createElement('div');
+				logElement.textContent = `[${type.toUpperCase()}] ${message}`;
+				logElement.style.color = type === 'error' ? 'red' : type === 'warn' ? 'yellow' : 'white';
+				logContainer.appendChild(logElement);
+				logContainer.scrollTop = logContainer.scrollHeight;
+			}
+
+			console.log = function () {
+				logToPage(Array.from(arguments).join(' '), 'log');
+				originalConsole.log.apply(console, arguments);
+			};
+
+			console.error = function () {
+				logToPage(Array.from(arguments).join(' '), 'error');
+				originalConsole.error.apply(console, arguments);
+			};
+
+			console.warn = function () {
+				logToPage(Array.from(arguments).join(' '), 'warn');
+				originalConsole.warn.apply(console, arguments);
+			};
+
+			console.info = function () {
+				logToPage(Array.from(arguments).join(' '), 'info');
+				originalConsole.info.apply(console, arguments);
+			};
+		});
 
     </script>
 
 
 
     <script>
+        console.log('hello?');
         // Set up the scene, camera, and renderer
         const scene = new THREE.Scene();
 
@@ -204,8 +268,8 @@
             camera.updateProjectionMatrix();
         }
 
-                // Create a plane in the xz-plane
-                const planeGeometry = new THREE.PlaneGeometry(200, 200);
+        // Create a plane in the xz-plane
+        const planeGeometry = new THREE.PlaneGeometry(200, 200);
         const planeMaterial = new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide });
         const plane = new THREE.Mesh(planeGeometry, planeMaterial);
         plane.rotation.x = -Math.PI / 2;  // Rotate to lie flat on the xz-plane

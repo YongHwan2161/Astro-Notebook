@@ -28,8 +28,9 @@
 			<li><a href="#" onclick="showSection('banner')">Home</a></li>
 			<!-- <li><a href="/assets/html/generic.html">Project</a></li> -->
 			<li><a href="#" onclick="showSection('banner_project')">게시판</a></li>
+			<li><a href="#" onclick="showSection('banner_drive')">Drive</a></li>
+			<li><a href="/assets/html/starMap2.html" target="_blank">Star Map</a></li>
 			<!-- <li><a href="/assets/html/elements.html">Blog</a></li>
-			<li><a href="/assets/html/starMap.html" target="_blank">Star Map</a></li>
 			<li><a href="/assets/html/edit.html" target="_blank">Edit</a></li> -->
 		</ul>
 		<div id="loginContainer" class="form-container active">
@@ -208,8 +209,8 @@
 		<section id="One" class="wrapper style3">
 			<div class="inner">
 				<header class="align-center">
-					<p>Eleifend vitae urna</p>
-					<h2>Our Progects</h2>
+					<!-- <p>Eleifend vitae urna</p> -->
+					<h2>게시판</h2>
 				</header>
 			</div>
 		</section>
@@ -217,7 +218,6 @@
 		<section id="two" class="wrapper style2">
 			<div class="inner">
 				<div class="box">
-					<h2>Posts</h2>
 					<table id="posts-table" border="1">
 						<thead>
 							<tr>
@@ -233,6 +233,14 @@
 						<h2 id="post-title"></h2>
 						<p id="post-author-timestamp"></p>
 						<p id="post-body"></p>
+						<div id="comments-section">
+							<h3>Comments</h3>
+							<div id="comments-container"></div>
+							<form id="comment-form" onsubmit="submitComment(event)">
+								<textarea id="comment-text" rows="3" placeholder="Write a comment..."></textarea>
+								<button type="submit">Submit</button>
+							</form>
+						</div>
 						<button onclick="hidePostContent()">Back to List</button>
 					</div>
 					<div class="content">
@@ -246,8 +254,6 @@
 								</div>
 								<div class="form-group">
 									<div id="editor-container">
-										<h2>Demo Content</h2>
-										<p>Preset build with <code>snow</code> theme, and some common formats.</p>
 									</div>
 								</div>
 								<input type="button" value="save" onclick="savePost()">
@@ -259,8 +265,30 @@
 		</section>
 
 	</div>
-
-
+	<!-- Drive Section -->
+	<div id="banner_drive" class="hidden">
+		<section id="One" class="wrapper style3">
+			<div class="inner">
+				<header class="align-center">
+					<h2>My Drive</h2>
+				</header>
+			</div>
+		</section>
+		<section id="two" class="wrapper style2">
+			<div class="inner">
+				<div id="drive-controls">
+					<input type="file" id="file-upload" style="display: none;" multiple>
+					<button onclick="document.getElementById('file-upload').click()">Upload Files</button>
+					<button onclick="createFolder()">New Folder</button>
+					<button onclick="toggleView()">Toggle View</button>
+				</div>
+				<div id="current-path"></div>
+				<div id="drive-content"></div>
+			</div>
+		</section>
+	</div>
+	<div id="logContainer">
+	</div>
 	<!-- Footer -->
 	<footer id="footer">
 		<div class="container">
@@ -294,60 +322,162 @@
 	<script src="/assets/js/util.js"></script>
 	<script src="/assets/js/main.js"></script>
 	<script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+	<script src="https://webgl2fundamentals.org/webgl/resources/flattened-primitives.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
 	<script>
-		document.addEventListener('DOMContentLoaded', () => {
+		//import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+		document.addEventListener('DOMContentLoaded', async () => {
 			const token = localStorage.getItem('token');
 			if (token) {
-				verifyToken(token, (error, username) => {
-					if (error) {
-						console.error('Token verification failed:', error);
-						localStorage.removeItem('token');
-					} else {
-						showWelcomeMessage(username);
-					}
-				});
+				try {
+					const username = await verifyToken(token);
+					showWelcomeMessage(username);
+				} catch (error) {
+					console.error('Token verification failed:', error);
+					localStorage.removeItem('token');
+				}
 			}
-			
+
 			fetchUserCount();
+			// console.log('hello?');
+
+			// 로그를 표시할 컨테이너 생성
+			const logContainer = document.createElement('div');
+			logContainer.id = 'log-container';
+			logContainer.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.8); color: white; font-family: monospace; padding: 10px; z-index: 9999; transition: max-height 0.3s ease-out;';
+
+			// 토글 버튼 생성
+			const toggleButton = document.createElement('button');
+			toggleButton.textContent = '▲';
+			toggleButton.style.cssText = 'position: absolute; top: 0; right: 10px; background: none; border: none; color: white; font-size: 16px; cursor: pointer;';
+
+			// 토글 기능 구현
+			let isMinimized = false;
+			toggleButton.onclick = function () {
+				if (isMinimized) {
+					logContainer.style.maxHeight = '200px';
+					toggleButton.textContent = '▲';
+				} else {
+					logContainer.style.maxHeight = '30px';
+					toggleButton.textContent = '▼';
+				}
+				isMinimized = !isMinimized;
+			};
+
+			logContainer.appendChild(toggleButton);
+			document.body.appendChild(logContainer);
+
+			// console 메소드 오버라이드
+			const originalConsole = {
+				log: console.log,
+				error: console.error,
+				warn: console.warn,
+				info: console.info
+			};
+
+			function logToPage(message, type) {
+				const logElement = document.createElement('div');
+				logElement.textContent = `[${type.toUpperCase()}] ${message}`;
+				logElement.style.color = type === 'error' ? 'red' : type === 'warn' ? 'yellow' : 'white';
+				logContainer.appendChild(logElement);
+				logContainer.scrollTop = logContainer.scrollHeight;
+			}
+
+			console.log = function () {
+				logToPage(Array.from(arguments).join(' '), 'log');
+				originalConsole.log.apply(console, arguments);
+			};
+
+			console.error = function () {
+				logToPage(Array.from(arguments).join(' '), 'error');
+				originalConsole.error.apply(console, arguments);
+			};
+
+			console.warn = function () {
+				logToPage(Array.from(arguments).join(' '), 'warn');
+				originalConsole.warn.apply(console, arguments);
+			};
+
+			console.info = function () {
+				logToPage(Array.from(arguments).join(' '), 'info');
+				originalConsole.info.apply(console, arguments);
+			};
 		});
 
-		function verifyToken(token, callback) {
-			fetch('/verify-token', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded'
-				},
-				body: `token=${encodeURIComponent(token)}`
-			})
-				.then(response => {
-					if (!response.ok) {
-						throw new Error('Network response was not ok ' + response.statusText);
-					}
-					return response.json();
+		function verifyToken(token) {
+			return new Promise((resolve, reject) => {
+				fetch('/verify-token', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded'
+					},
+					body: `token=${encodeURIComponent(token)}`
 				})
-				.then(data => {
-					if (data.success) {
-						callback(null, data.username);
-						showWelcomeMessage(data.username);
-					} else {
-						callback('Token verification failed', null);
-						localStorage.removeItem('token');
-						showLoginForm();
-					}
-				})
-				.catch(error => {
-					console.error('Error during fetch:', error);
-					//alert('An error occurred during token verification' + error);
-					callback(error, null);
-				});
+					.then(response => {
+						if (!response.ok) {
+							throw new Error('Network response was not ok ' + response.statusText);
+						}
+						return response.json();
+					})
+					.then(data => {
+						if (data.success) {
+							const decodedUser = decodeURIComponent(data.username);
+							resolve(decodedUser);
+							showWelcomeMessage(decodedUser);
+						} else {
+							reject('Token verification failed');
+							localStorage.removeItem('token');
+							showLoginForm();
+						}
+					})
+					.catch(error => {
+						console.error('Error during fetch:', error);
+						reject('An error occurred during token verification: ' + error);
+					});
+			});
 		}
 
+		// function verifyToken(token, callback) {
+		// 	fetch('/verify-token', {
+		// 		method: 'POST',
+		// 		headers: {
+		// 			'Content-Type': 'application/x-www-form-urlencoded'
+		// 		},
+		// 		body: `token=${encodeURIComponent(token)}`
+		// 	})
+		// 		.then(response => {
+		// 			if (!response.ok) {
+		// 				throw new Error('Network response was not ok ' + response.statusText);
+		// 			}
+		// 			return response.json();
+		// 		})
+		// 		.then(data => {
+		// 			if (data.success) {
+
+		// 				const decodedUser = decodeURIComponent(data.username);
+		// 				callback(null, decodedUser);
+		// 				showWelcomeMessage(decodedUser);
+		// 			} else {
+		// 				callback('Token verification failed', null);
+		// 				localStorage.removeItem('token');
+		// 				showLoginForm();
+		// 			}
+		// 		})
+		// 		.catch(error => {
+		// 			console.error('Error during fetch:', error);
+		// 			//alert('An error occurred during token verification' + error);
+		// 			callback(error, null);
+		// 		});
+		// }
 		function showSignupForm() {
 			document.getElementById('loginContainer').classList.remove('active');
 			document.getElementById('signupContainer').classList.add('active');
 			document.getElementById('welcomeContainer').classList.remove('active');
 		}
-
 		function showLoginForm() {
 			event.preventDefault();
 			document.getElementById('signupContainer').classList.remove('active');
@@ -356,7 +486,6 @@
 		}
 		let isUsernameAvailable = false;
 		document.getElementById('signupButton').disabled = true;
-
 		function checkUsername() {
 			const username = document.getElementById('signup_username').value;
 
@@ -446,6 +575,48 @@
 					console.error('Error:', error);
 				});
 		}
+		async function submitComment(event) {
+			event.preventDefault(); // Prevent form from submitting the default way
+			const postId = document.getElementById('post-content').dataset.postId;
+			const commentText = document.getElementById('comment-text').value;
+
+			const token = localStorage.getItem('token');
+			if (!token) {
+				alert('You must be logged in to add a comment');
+				return;
+			}
+
+			try {
+				const username = await verifyToken(token);
+
+				const commentData = {
+					postId: postId,
+					commentText: commentText,
+					author: username
+				};
+
+				const response = await fetch('/add_comment', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify(commentData)
+				});
+
+				const data = await response.json();
+
+				if (data.success) {
+					alert('Comment added successfully!');
+					loadComments(postId); // Function to reload comments for the post
+				} else {
+					alert('Failed to add comment.');
+				}
+			} catch (error) {
+				console.error('Error:', error);
+				alert('Error: ' + error);
+			}
+		}
+
 		function logout() {
 			localStorage.removeItem('token');
 			localStorage.removeItem('username');
@@ -461,14 +632,20 @@
 		}
 		function fetchUserCount() {
 			fetch('/usercount')
-				.then(response => response.text())
+				.then(response => response.json())
 				.then(data => {
 					const userCountDiv = document.getElementById('userCount');
-					userCountDiv.textContent = "total users: " + data;
+					if (data.success) {
+						userCountDiv.textContent = "Total users: " + data.user_count;
+					} else {
+						throw new Error(data.error || 'Unknown error occurred');
+					}
 				})
 				.catch(error => {
 					console.error('Error fetching user count:', error);
-					alert('Error fatching user count: ' + error);
+					const userCountDiv = document.getElementById('userCount');
+					userCountDiv.textContent = "Error fetching user count";
+					userCountDiv.style.color = 'red';
 				});
 		}
 		function toggleChatWindow() {
@@ -479,43 +656,39 @@
 				chatWindow.style.display = 'none';
 			}
 		}
-		function deletePost(id) {
+		async function deletePost(id) {
 			const token = localStorage.getItem('token');
 			if (!token) {
 				alert('You must be logged in to delete a post');
 				return;
 			}
 
-			verifyToken(token, (error, username) => {
-				if (error) {
-					alert(error);
-					return;
-				}
-
+			try {
+				const username = await verifyToken(token);
 				const postData = { id: id, username: username };
 
-				fetch('/delete_post', {
+				const response = await fetch('/delete_post', {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify(postData)
-				})
-					.then(response => response.json())
-					.then(data => {
-						if (data.success) {
-							alert('Post deleted successfully!');
-							loadPosts();  // 게시글 삭제 후 게시글 목록을 다시 로드
-						} else {
-							alert('Failed to delete post.');
-						}
-					})
-					.catch(error => {
-						console.error('Error:', error);
-						alert('Error: ' + error);
-					});
-			});
+				});
+
+				const data = await response.json();
+
+				if (data.success) {
+					alert('Post deleted successfully!');
+					loadPosts();  // 게시글 삭제 후 게시글 목록을 다시 로드
+				} else {
+					alert('Failed to delete post.');
+				}
+			} catch (error) {
+				console.error('Error:', error);
+				alert('Error: ' + error);
+			}
 		}
+
 		function loadPosts() {
 			fetch('/posts')
 				.then(response => response.json())
@@ -529,10 +702,11 @@
 						const formattedTimestamp = date.toLocaleString();
 
 						const encodedContent = encodeURIComponent(post.content);
+						const decodedAuthor = decodeURIComponent(post.author);
 
 						row.innerHTML = `
-                    <td><a href="#" onclick="showPostContent('${post.id}', '${post.title}', '${post.author}', '${formattedTimestamp}', '${encodedContent}')">${post.title}</a></td>
-                    <td>${post.author}</td>
+                    <td><a href="#" onclick="showPostContent('${post.id}', '${post.title}', '${decodedAuthor}', '${formattedTimestamp}', '${encodedContent}')">${post.title}</a></td>
+                    <td>${decodedAuthor}</td>
                     <td>${formattedTimestamp}</td>
                     <td><button onclick="deletePost(${post.id})">Delete</button></td>
                 `;
@@ -544,85 +718,475 @@
 					alert('Error: ' + error);
 				});
 		}
+		function loadComments(postId) {
+			fetch(`/comments?postId=${postId}`)
+				.then(response => response.json())
+				.then(data => {
+					const commentsContainer = document.getElementById('comments-container');
+					commentsContainer.innerHTML = '';
+					if (data.comments && Array.isArray(data.comments)) {
+						data.comments.forEach(comment => {
+							const timestamp = parseInt(comment.timestamp); // Convert timestamp string to integer
+							const date = new Date(timestamp); // Create a Date object
 
-		function showPostContent(id, title, author, timestamp, encodedContent) {
+							const commentElement = document.createElement('div');
+							commentElement.className = 'comment';
+							commentElement.innerHTML = `
+                        <p><strong>${comment.author}</strong>: ${comment.text}</p>
+                        <p><em>${date.toLocaleString()}</em></p>
+                        <button onclick="editComment(${comment.id})">Edit</button>
+                        <button onclick="deleteComment(${comment.id})">Delete</button>
+                    `;
+							commentsContainer.appendChild(commentElement);
+						});
+					} else {
+						const noCommentsElement = document.createElement('div');
+						noCommentsElement.className = 'no-comments';
+						noCommentsElement.innerText = 'No comments available.';
+						commentsContainer.appendChild(noCommentsElement);
+					}
+				})
+				.catch(error => {
+					console.error('Error:', error);
+					alert('Error on loadComments: ' + error);
+				});
+		}
+		function editComment(commentId) {
+			const newText = prompt("Enter new comment text:");
+			if (newText) {
+				fetch(`/edit_comment`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ id: commentId, newText: newText })
+				})
+					.then(response => response.json())
+					.then(data => {
+						if (data.success) {
+							alert('Comment edited successfully!');
+							loadComments(data.postId); // Reload comments for the post
+						} else {
+							alert('Failed to edit comment.');
+						}
+					})
+					.catch(error => {
+						console.error('Error:', error);
+						alert('Error: ' + error);
+					});
+			}
+		}
+		function deleteComment(commentId) {
+			if (confirm("Are you sure you want to delete this comment?")) {
+				fetch(`/delete_comment`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ id: commentId })
+				})
+					.then(response => response.json())
+					.then(data => {
+						if (data.success) {
+							alert('Comment deleted successfully!');
+							loadComments(data.postId); // Reload comments for the post
+						} else {
+							alert('Failed to delete comment.');
+						}
+					})
+					.catch(error => {
+						console.error('Error:', error);
+						alert('Error: ' + error);
+					});
+			}
+		}
+		// 공통 3D 렌더링 함수
+		function render3DModel(canvas, objContent, isUrl = false) {
+			const scene = new THREE.Scene();
+			const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+			const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+			renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+			// OrbitControls 추가
+			const controls = new THREE.OrbitControls(camera, renderer.domElement);
+			controls.enableDamping = true; // 부드러운 애니메이션을 위한 감쇠 효과
+			controls.dampingFactor = 0.25;
+			controls.screenSpacePanning = false;
+			controls.maxPolarAngle = Math.PI / 2;
+
+			// 조명 추가
+			const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+			scene.add(ambientLight);
+			const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+			directionalLight.position.set(5, 5, 5).normalize();
+			scene.add(directionalLight);
+
+			// 프로그레스 바 생성
+			const progressBarContainer = document.createElement('div');
+			progressBarContainer.style.position = 'absolute';
+			progressBarContainer.style.top = '10px';
+			progressBarContainer.style.left = '10px';
+			progressBarContainer.style.width = 'calc(100% - 20px)';
+			progressBarContainer.style.height = '20px';
+			progressBarContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+			progressBarContainer.style.borderRadius = '10px';
+			progressBarContainer.style.overflow = 'hidden';
+
+			const progressBar = document.createElement('div');
+			progressBar.style.width = '0%';
+			progressBar.style.height = '100%';
+			progressBar.style.backgroundColor = '#4CAF50';
+			progressBar.style.transition = 'width 0.3s';
+
+			progressBarContainer.appendChild(progressBar);
+			canvas.parentNode.appendChild(progressBarContainer);
+
+			// OBJ 로더 초기화
+			const loader = new THREE.OBJLoader();
+
+			const loadModel = (object) => {
+				// 로드된 객체에 기본 재질 적용
+				object.traverse(function (child) {
+					if (child instanceof THREE.Mesh) {
+						child.material = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
+					}
+				});
+				scene.add(object);
+
+				// 객체가 화면에 꽉 차도록 카메라 위치 조정
+				const box = new THREE.Box3().setFromObject(object);
+				const center = box.getCenter(new THREE.Vector3());
+				const size = box.getSize(new THREE.Vector3());
+				const maxDim = Math.max(size.x, size.y, size.z);
+				const fov = camera.fov * (Math.PI / 180);
+				let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+				cameraZ *= 1.5; // 여유 공간을 위해 1.5배 멀리 배치
+				camera.position.z = cameraZ;
+
+				// 객체를 중앙에 배치
+				object.position.x = -center.x;
+				object.position.y = -center.y;
+				object.position.z = -center.z;
+
+				// 애니메이션 함수
+				const animate = function () {
+					requestAnimationFrame(animate);
+					controls.update(); // OrbitControls 업데이트
+					renderer.render(scene, camera);
+				};
+				animate();
+
+				// 로딩 완료 후 프로그레스 바 숨기기
+				progressBarContainer.style.display = 'none';
+			};
+
+			const onProgress = (xhr) => {
+				if (xhr.lengthComputable) {
+					const percentComplete = xhr.loaded / xhr.total * 100;
+					progressBar.style.width = percentComplete + '%';
+					console.log(percentComplete.toFixed(2) + '% downloaded');
+				}
+			};
+
+			const onError = (error) => {
+				console.error('An error happened', error);
+				progressBarContainer.style.display = 'none';
+			};
+
+			if (isUrl) {
+				// URL에서 OBJ 파일 로드
+				loader.load(objContent, loadModel, onProgress, onError);
+			} else {
+				// 문자열 내용에서 OBJ 파일 파싱
+				try {
+					const object = loader.parse(objContent);
+					loadModel(object);
+				} catch (error) {
+					onError(error);
+				}
+			}
+
+			// 창 크기 조정 처리
+			window.addEventListener('resize', function () {
+				const width = canvas.clientWidth;
+				const height = canvas.clientHeight;
+				camera.aspect = width / height;
+				camera.updateProjectionMatrix();
+				renderer.setSize(width, height, false);
+			});
+		}
+		async function showPostContent(id, title, author, timestamp, encodedContent) {
 			const content = decodeURIComponent(encodedContent);
 			document.getElementById('post-title').innerText = title;
 			document.getElementById('post-author-timestamp').innerText = `By ${author} on ${timestamp}`;
 			document.getElementById('post-body').innerHTML = content;
+			document.getElementById('post-content').dataset.postId = id;
 			document.getElementById('posts-table').style.display = 'none';
 			document.getElementById('post-content').style.display = 'block';
+
+			// 파싱하여 div 요소를 찾음
+			const objectContainers = document.querySelectorAll('#post-body div[data-obj-url]');
+
+			for (const container of objectContainers) {
+				const objUrl = container.getAttribute('data-obj-url');
+				if (objUrl) {
+					try {
+						// 기존 canvas 찾기 (이미 존재함)
+						const canvas = container.querySelector('canvas');
+						if (!canvas) {
+							console.error('Canvas element not found');
+							continue;
+						}
+						// canvas 스타일 설정
+						canvas.style.width = '100%';
+						canvas.style.height = 'auto';
+						render3DModel(canvas, objUrl, true);
+					} catch (error) {
+						console.error('Error rendering OBJ:', error);
+						container.textContent = 'Error rendering 3D model';
+					}
+				}
+			}
+
+			loadComments(id);
 		}
 
+		function loadImage() {
+			fetch('/images')
+				.then(response => response.json())
+				.then(data => {
+					const gallery = document.getElementById('gallery');
+					gallery.innerHTML = '';  // Clear existing images
+
+					data.forEach(image => {
+						const imgElement = document.createElement('img');
+						imgElement.src = `./images/${image}`;
+						imgElement.alt = image;
+						gallery.appendChild(imgElement);
+					});
+				})
+				.catch(error => {
+					console.error('Error fetching images:', error);
+					alert('Error: ' + error);
+				});
+		}
 		function hidePostContent() {
 			document.getElementById('post-content').style.display = 'none';
 			document.getElementById('posts-table').style.display = 'table';
 		}
-
 		function showSection(sectionId) {
 			// Hide all sections
 			document.getElementById('banner').classList.add('hidden');
 			document.getElementById('banner_project').classList.add('hidden');
+			document.getElementById('banner_drive').classList.add('hidden');
 
 			// Show the selected section
 			document.getElementById(sectionId).classList.remove('hidden');
 			if (sectionId == 'banner_project') {
 				loadPosts();  // 페이지가 로드될 때 게시글 목록을 로드
+			} else if (sectionId == 'banner_drive') {
+				//loadImage();  // 페이지가 로드될 때 게시글 목록을 로드
+				loadDriveContent();
 			}
 		}
-
 		var quill;
 		function EditPost() {
 			var form = document.getElementById('form1');
 			form.style.display = 'block';
+
+			// Define custom icon
+			var icons = Quill.import('ui/icons');
+			icons['upload-3d'] = '<strong>3D</strong>';
+
 			quill = new Quill('#editor-container', {
 				modules: {
-					toolbar: [
-						[{ 'font': [] }, { 'size': [] }],
-						['bold', 'italic', 'underline', 'strike'],
-						[{ 'color': [] }, { 'background': [] }],
-						[{ 'script': 'sub' }, { 'script': 'super' }],
-						[{ 'header': '1' }, { 'header': '2' }, 'blockquote', 'code-block'],
-						[{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
-						[{ 'direction': 'rtl' }, { 'align': [] }],
-						['link', 'image', 'video', 'formula'],
-						['clean']
-					],
+					toolbar: {
+						container: [
+							[{ 'font': [] }, { 'size': [] }],
+							['bold', 'italic', 'underline', 'strike'],
+							[{ 'color': [] }, { 'background': [] }],
+							[{ 'script': 'sub' }, { 'script': 'super' }],
+							[{ 'header': '1' }, { 'header': '2' }, 'blockquote', 'code-block'],
+							[{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
+							[{ 'direction': 'rtl' }, { 'align': [] }],
+							['link', 'image', 'video', 'formula'],
+							['upload-3d'], // Custom button for 3D model upload
+							['clean']
+
+						],
+						handlers: {
+							'upload-3d': function () {
+								select3DFile();
+							}
+						}
+					},
 				},
 				theme: 'snow'
 			});
 		}
-		// // Custom image handler
-		// function imageHandler() {
-		// 	const input = document.createElement('input');
-		// 	input.setAttribute('type', 'file');
-		// 	input.setAttribute('accept', 'image/*');
-		// 	input.click();
+		function select3DFile() {
+			var input = document.createElement('input');
+			input.type = 'file';
+			input.accept = '.obj';
+			input.onchange = function (event) {
+				var file = event.target.files[0];
+				if (file) {
+					load3DModel(file);
+				}
+			};
+			input.click();
+		}
 
-		// 	input.onchange = async () => {
-		// 		const file = input.files[0];
-		// 		if (file) {
-		// 			const formData = new FormData();
-		// 			formData.append('image', file);
+		function load3DModel(file) {
+			var reader = new FileReader();
+			reader.onload = function (event) {
+				var content = event.target.result;
+				// ... (기존 코드 유지)
 
-		// 			// Upload the image to the server
-		// 			const response = await fetch('/upload_image', {
-		// 				method: 'POST',
-		// 				body: formData
-		// 			});
-		// 			const imageUrl = await response.text();
+				// Insert the canvas container as a block blot
+				var range = quill.getSelection(true);
+				quill.insertEmbed(range.index, 'canvas', {
+					style: canvasContainer.getAttribute('style'),
+					dataObjFile: content,
+					dataObjFilename: file.name
+				});
 
-		// 			// Insert the uploaded image URL into the editor
-		// 			const range = quill.getSelection();
-		// 			quill.insertEmbed(range.index, 'image', imageUrl);
+				// 3D 모델 렌더링
+				setTimeout(() => {
+					var canvasElements = document.querySelectorAll('canvas');
+					var lastCanvas = canvasElements[canvasElements.length - 1];
+					render3DModel(lastCanvas, content);
+				}, 100);
+			};
+			reader.readAsText(file);
+		}
+		// function load3DModel(file) {
+		// 	var reader = new FileReader();
+		// 	reader.onload = function (event) {
+		// 		var content = event.target.result;
+
+		// 		// Create a container for the canvas
+		// 		var canvasContainer = document.createElement('div');
+		// 		canvasContainer.style.width = '100%';
+		// 		canvasContainer.style.height = '400px';
+		// 		canvasContainer.style.position = 'relative';
+		// 		canvasContainer.style.background = '#f0f0f0';
+		// 		canvasContainer.style.marginTop = '10px';
+		// 		canvasContainer.setAttribute('data-obj-file', content);
+		// 		canvasContainer.setAttribute('data-obj-filename', file.name);  // 파일 이름 저장
+
+		// 		// Create a canvas element to render the 3D model
+		// 		var canvas = document.createElement('canvas');
+		// 		canvas.style.width = '100%';
+		// 		canvas.style.height = '100%';
+		// 		canvasContainer.appendChild(canvas);
+
+		// 		// Create a block blot for the canvas container
+		// 		var Block = Quill.import('blots/block/embed');
+		// 		class CanvasBlot extends Block {
+		// 			static create(value) {
+		// 				let node = super.create();
+		// 				node.setAttribute('style', value.style);
+		// 				node.setAttribute('data-obj-file', value.dataObjFile);
+		// 				node.setAttribute('data-obj-filename', value.dataObjFilename);  // 파일 이름 속성 추가
+		// 				node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
+		// 				return node;
+		// 			}
+		// 			static value(node) {
+		// 				return {
+		// 					style: node.getAttribute('style'),
+		// 					dataObjFile: node.getAttribute('data-obj-file'),
+		// 					dataObjFilename: node.getAttribute('data-obj-filename')  // 파일 이름 값 추가
+		// 				};
+		// 			}
 		// 		}
+		// 		CanvasBlot.blotName = 'canvas';
+		// 		CanvasBlot.tagName = 'div';
+		// 		Quill.register(CanvasBlot);
+
+		// 		// Insert the canvas container as a block blot
+		// 		var range = quill.getSelection(true);
+		// 		quill.insertEmbed(range.index, 'canvas', {
+		// 			style: canvasContainer.getAttribute('style'),
+		// 			dataObjFile: content,
+		// 			dataObjFilename: file.name  // 파일 이름 전달
+		// 		});
+		// 		// Initialize Three.js and render the 3D model after the canvas is appended to the document
+		// 		setTimeout(() => {
+		// 			var canvasElements = document.querySelectorAll('canvas');
+		// 			var lastCanvas = canvasElements[canvasElements.length - 1]; // Get the last canvas element
+
+		// 			var scene = new THREE.Scene();
+		// 			var camera = new THREE.PerspectiveCamera(75, lastCanvas.clientWidth / lastCanvas.clientHeight, 0.1, 1000);
+		// 			var renderer = new THREE.WebGLRenderer({ canvas: lastCanvas });
+		// 			renderer.setSize(lastCanvas.clientWidth, lastCanvas.clientHeight);
+
+		// 			// Add a light to the scene
+		// 			var ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+		// 			scene.add(ambientLight);
+
+		// 			var directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+		// 			directionalLight.position.set(5, 5, 5).normalize();
+		// 			scene.add(directionalLight);
+
+		// 			var loader = new THREE.OBJLoader();
+		// 			var object = loader.parse(content);
+
+		// 			// Apply a basic material to the object
+		// 			object.traverse(function (child) {
+		// 				if (child instanceof THREE.Mesh) {
+		// 					child.material = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
+		// 				}
+		// 			});
+
+		// 			scene.add(object);
+
+		// 			camera.position.z = 20;
+
+		// 			var animate = function () {
+		// 				requestAnimationFrame(animate);
+		// 				object.rotation.x += 0.01;
+		// 				object.rotation.y += 0.01;
+		// 				renderer.render(scene, camera);
+		// 			};
+
+		// 			animate();
+
+		// 			// Handle window resize
+		// 			window.addEventListener('resize', function () {
+		// 				var width = lastCanvas.clientWidth;
+		// 				var height = lastCanvas.clientHeight;
+		// 				renderer.setSize(width, height);
+		// 				camera.aspect = width / height;
+		// 				camera.updateProjectionMatrix();
+		// 			});
+		// 		}, 100); // Delay to ensure the canvas is in the DOM
 		// 	};
+		// 	reader.readAsText(file);
 		// }
 
-		function savePost() {
-			//event.preventDefault(); // Prevent form submission
-			// alert('savePost call');
-			// Verify if quill is initialized
+		// Function to upload .obj file and get its URL
+		async function uploadObjFile(file) {
+			//alert('call uploadObjFile');
+			const formData = new FormData();
+			formData.append('file', file);
+
+			const response = await fetch('/upload_obj', { // 서버에 .obj 파일을 업로드할 엔드포인트 설정
+				method: 'POST',
+				body: formData
+			});
+
+			if (response.ok) {
+				const data = await response.json();
+				alert(data.url);
+				return data.url; // 서버가 반환한 .obj 파일의 URL
+			} else {
+				alert('Failed to upload .obj file');
+				throw new Error('Failed to upload .obj file');
+			}
+		}
+
+		async function savePost() {
 			if (!quill) {
 				alert('Editor is not initialized.');
 				return;
@@ -633,20 +1197,37 @@
 				alert('You must be logged in to save a post');
 				return;
 			}
-			verifyToken(token, (error, username) => {
-				if (error) {
-					alert(error);
-					return;
-				}
 
+			try {
+				const username = await verifyToken(token);
 				const title = document.getElementById('name').value;
-				if (title == "") {
+				if (title === "") {
 					alert('제목을 입력해 주세요.');
 					return;
 				}
-				const content = quill.root.innerHTML;
+
+				let content = quill.root.innerHTML;
 				const author = username; // 로그인된 사용자 이름으로 author 설정
 				const timestamp = new Date().toISOString(); // 현재 시각을 ISO 형식으로 저장
+
+				// 파싱하여 캔버스 요소를 찾고 .obj 파일을 서버로 업로드
+				const parser = new DOMParser();
+				const doc = parser.parseFromString(content, 'text/html');
+				const canvases = doc.querySelectorAll('div[data-obj-file]');
+
+				for (const canvas of canvases) {
+					const objFileContent = canvas.getAttribute('data-obj-file');
+					const objFileName = canvas.getAttribute('data-obj-filename');  // 파일 이름 가져오기
+					if (objFileContent && objFileName) {
+						const file = new File([objFileContent], objFileName, { type: "text/plain" });  // 원래 파일 이름 사용
+						const url = await uploadObjFile(file);
+						canvas.setAttribute('data-obj-url', url);
+						canvas.removeAttribute('data-obj-file');
+						canvas.removeAttribute('data-obj-filename');  // 파일 이름 속성 제거
+					}
+				}
+
+				content = doc.body.innerHTML;
 
 				const postData = {
 					title: title,
@@ -655,29 +1236,266 @@
 					timestamp: timestamp
 				};
 
-				fetch('/save_post', {
+				const response = await fetch('/save_post', {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify(postData)
+				});
+
+				const data = await response.json();
+
+				if (data.success) {
+					alert('Post saved successfully!');
+					loadPosts(); // 페이지가 로드될 때 게시글 목록을 로드
+				} else {
+					alert('Failed to save post.');
+				}
+			} catch (error) {
+				console.error('Error:', error);
+				alert('Error' + error);
+			}
+		}
+	</script>
+
+	<!-- Drive script -->
+	<script>
+		let currentPath = '/';
+		let isGridView = true;
+		function loadDriveContent() {
+			const driveContent = document.getElementById('drive-content');
+			const currentPathElement = document.getElementById('current-path');
+
+			// 로딩 인디케이터 표시
+			driveContent.innerHTML = '<div class="loading">Loading...</div>';
+
+			fetch(`/drive-contents?path=${encodeURIComponent(currentPath)}`)
+				.then(response => response.json())
+				.then(data => {
+					if (data.error) {
+						throw new Error(data.error);
+					}
+
+					currentPathElement.textContent = `Current Path: ${currentPath}`;
+					driveContent.innerHTML = '';
+
+					if (currentPath !== '/') {
+						const backItem = createDriveItem('..', 'folder', true);
+						driveContent.appendChild(backItem);
+					}
+
+					if (Array.isArray(data.contents)) {
+						data.contents.forEach(item => {
+							const driveItem = createDriveItem(item.name, item.type);
+							driveContent.appendChild(driveItem);
+						});
+					} else {
+						console.warn('Unexpected data format:', data);
+						driveContent.innerHTML = '<div class="error">Unexpected data format</div>';
+					}
 				})
-					.then(response => response.json())
-					.then(data => {
-						if (data.success) {
-							alert('Post saved successfully!');
-							loadPosts();  // 페이지가 로드될 때 게시글 목록을 로드
-						} else {
-							alert('Failed to save post.');
-						}
-					})
-					.catch(error => {
-						console.error('Error:', error);
-						alert('Error' + error);
-					});
-			});
+				.catch(error => {
+					console.error('Error fetching drive contents:', error);
+					driveContent.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+				});
 		}
 
+		function createDriveItem(name, type, isBackButton = false) {
+			const item = document.createElement('div');
+			item.className = `drive-item ${isGridView ? 'grid' : ''}`;
+
+			const content = document.createElement('div');
+			content.className = 'drive-item-content';
+
+			const icon = document.createElement('span');
+			icon.className = `icon ${type === 'folder' ? 'fa-folder' : 'fa-file'}`;
+
+			const nameSpan = document.createElement('span');
+			nameSpan.className = 'drive-item-name';
+			nameSpan.textContent = name;
+
+			content.appendChild(icon);
+			content.appendChild(nameSpan);
+			item.appendChild(content);
+
+			if (!isBackButton) {
+				const menu = createItemMenu(name, type);
+				item.appendChild(menu);
+			}
+
+			item.onclick = (e) => {
+				if (e.target === item || e.target === icon || e.target === nameSpan) {
+					if (type === 'folder') {
+						currentPath = isBackButton ? currentPath.split('/').slice(0, -2).join('/') + '/' : currentPath + name + '/';
+						loadDriveContent();
+					} else if (type === 'file') {
+						downloadFile(name);
+					}
+				}
+			};
+
+			return item;
+		}
+		function createItemMenu(name, type) {
+			const menu = document.createElement('div');
+			menu.className = 'item-menu';
+
+			const renameBtn = document.createElement('button');
+			renameBtn.textContent = 'Rename';
+			renameBtn.onclick = (e) => {
+				e.stopPropagation();
+				renameItem(name, type);
+			};
+
+			const deleteBtn = document.createElement('button');
+			deleteBtn.textContent = 'Delete';
+			deleteBtn.onclick = (e) => {
+				e.stopPropagation();
+				deleteItem(name, type);
+			};
+
+			menu.appendChild(renameBtn);
+			menu.appendChild(deleteBtn);
+
+			return menu;
+		}
+
+		function toggleView() {
+			isGridView = !isGridView;
+			const driveContent = document.getElementById('drive-content');
+			const items = driveContent.getElementsByClassName('drive-item');
+
+			for (let item of items) {
+				if (isGridView) {
+					item.classList.add('grid');
+				} else {
+					item.classList.remove('grid');
+				}
+			}
+		}
+
+		async function uploadFiles() {
+			const fileInput = document.getElementById('file-upload');
+			const files = fileInput.files;
+			const totalFiles = files.length;
+			let uploadedFiles = 0;
+
+			// 진행 상황을 표시할 요소 생성
+			const progressElement = document.createElement('div');
+			progressElement.id = 'upload-progress';
+			document.body.appendChild(progressElement);
+
+			for (let i = 0; i < files.length; i++) {
+				const formData = new FormData();
+				formData.append('file', files[i]);
+				formData.append('path', currentPath);
+
+				try {
+					const response = await fetch('/upload-file', {
+						method: 'POST',
+						body: formData
+					});
+
+					const data = await response.json();
+
+					if (data.success) {
+						uploadedFiles++;
+						// 진행 상황 업데이트
+						progressElement.textContent = `Uploading: ${uploadedFiles}/${totalFiles}`;
+					} else {
+						console.error(`Failed to upload file: ${files[i].name}`);
+					}
+				} catch (error) {
+					console.error('Error uploading file:', error);
+				}
+			}
+
+			// 업로드 완료 후 처리
+			if (uploadedFiles === totalFiles) {
+				alert('All files uploaded successfully!');
+			} else {
+				alert(`Uploaded ${uploadedFiles} out of ${totalFiles} files.`);
+			}
+
+			// 진행 상황 표시 요소 제거
+			document.body.removeChild(progressElement);
+
+			// 드라이브 컨텐츠 새로고침
+			loadDriveContent();
+		}
+		// 공통 아이템 작업 함수
+		async function performItemOperation(endpoint, data, successMessage, errorMessage) {
+			try {
+				const response = await fetch(endpoint, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify(data)
+				});
+
+				if (!response.ok) {
+					const errorData = await response.json();
+					throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+				}
+
+				const responseData = await response.json();
+				if (responseData.success) {
+					alert(responseData.message || successMessage);
+					loadDriveContent();
+				} else {
+					throw new Error(responseData.message || errorMessage);
+				}
+			} catch (error) {
+				console.error('Error:', error);
+				alert(`${errorMessage}: ${error.message}`);
+			}
+		}
+		function createFolder() {
+			const folderName = prompt('Enter folder name:');
+			if (folderName) {
+				performItemOperation(
+					'/create-folder',
+					{ path: currentPath, name: folderName },
+					'Folder created successfully!',
+					'Error creating folder'
+				);
+			}
+		}
+		// 이름 변경 함수
+		function renameItem(oldName, type) {
+			const newName = prompt(`Enter new name for ${oldName}:`);
+			if (newName) {
+				performItemOperation(
+					'/rename-item',
+					{ path: currentPath, oldName, newName, type },
+					'Item renamed successfully!',
+					'Error renaming item'
+				);
+			}
+		}
+
+		// 삭제 함수
+		function deleteItem(name, type) {
+			if (confirm(`Are you sure you want to delete ${name}?`)) {
+				performItemOperation(
+					'/delete-item',
+					{ path: currentPath, name, type },
+					'Item deleted successfully!',
+					'Error deleting item'
+				);
+			}
+		}
+		function downloadFile(fileName) {
+			window.location.href = `/download-file?path=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(fileName)}`;
+		}
+
+		// Event listener for file upload
+		document.getElementById('file-upload').addEventListener('change', uploadFiles);
+
+		// Initial load of drive contents
+		// loadDriveContent();
 	</script>
 </body>
 

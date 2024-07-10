@@ -1,0 +1,66 @@
+#include <iostream>
+#include <string>
+#include <sqlite3.h>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
+std::pair<int, std::string> get_user_count(sqlite3* db)
+{
+    // ... (이전 코드와 동일)
+}
+
+void send_json_response2(int client_socket, int status_code, const std::string& status_message, const json& response_json)
+{
+    std::string json_str = response_json.dump();
+    std::ostringstream response_stream;
+    response_stream << "HTTP/1.1 " << status_code << " " << status_message << "\r\n";
+    response_stream << "Content-Type: application/json\r\n";
+    response_stream << "Content-Length: " << json_str.length() << "\r\n";
+    response_stream << "\r\n";
+    response_stream << json_str;
+
+    std::string response = response_stream.str();
+
+    // 디버깅: 전송할 응답 출력
+    std::cout << "Sending response:\n" << response << std::endl;
+
+    ssize_t bytes_sent = send(client_socket, response.c_str(), response.length(), 0);
+    
+    // 디버깅: 전송된 바이트 수 확인
+    std::cout << "Bytes sent: " << bytes_sent << " out of " << response.length() << std::endl;
+
+    if (bytes_sent != static_cast<ssize_t>(response.length())) {
+        std::cerr << "Failed to send full response" << std::endl;
+    }
+}
+
+void handle_user_count_request(int client_socket, sqlite3* db)
+{
+    json response_json;
+    int status_code = 200;
+    std::string status_message = "OK";
+
+    auto [user_count, error_message] = get_user_count(db);
+
+    // 디버깅: 데이터베이스 쿼리 결과 출력
+    std::cout << "User count: " << user_count << ", Error message: " << error_message << std::endl;
+
+    if (error_message.empty())
+    {
+        response_json["success"] = true;
+        response_json["user_count"] = user_count;
+    }
+    else
+    {
+        status_code = 500;
+        status_message = "Internal Server Error";
+        response_json["success"] = false;
+        response_json["error"] = error_message;
+    }
+
+    // 디버깅: 생성된 JSON 출력
+    std::cout << "Generated JSON: " << response_json.dump() << std::endl;
+
+    send_json_response2(client_socket, status_code, status_message, response_json);
+}
