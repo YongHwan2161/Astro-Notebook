@@ -55,6 +55,7 @@
 						style="color: white;">
 					<input type="password" name="name" id="signup_confirm_password" value=""
 						placeholder="Confirm password" style="color: white;">
+					<input type="email" name="email" id="signup_email" value="" placeholder="Email (Optional)">
 					<input type="button" value="Signup" onclick="submitSignup()">
 					<input type="button" value="Back to Login" onclick="showLoginForm()">
 				</div>
@@ -325,26 +326,42 @@
 	<script src="https://webgl2fundamentals.org/webgl/resources/flattened-primitives.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
 	<script>
 		//import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-
 		document.addEventListener('DOMContentLoaded', async () => {
-			const token = localStorage.getItem('token');
-			if (token) {
-				try {
-					const username = await verifyToken(token);
-					showWelcomeMessage(username);
-				} catch (error) {
-					console.error('Token verification failed:', error);
-					localStorage.removeItem('token');
+			try {
+				const token = localStorage.getItem('token');
+				if (token) {
+					
+				alert('if');
+					try {
+						const username = await verifyToken(token);
+						showWelcomeMessage(username);
+					} catch (error) {
+						console.error('Token verification failed:', error);
+						localStorage.removeItem('token');
+						showLoginForm();
+					}
+				} else {
+					
+				alert('else');
+					showLoginForm();
 				}
+
+				await fetchUserCount();
+
+				// 로그 컨테이너 생성
+				createLogContainer();
+
+			} catch (error) {
+				console.error('Error during initialization:', error);
+				alert('Error during initialize');
 			}
-
-			fetchUserCount();
-
-			// 로그 컨테이너 생성
+		});
+		function createLogContainer() {
 			const logContainer = document.createElement('div');
 			logContainer.id = 'log-container';
 			logContainer.style.cssText = `
@@ -379,9 +396,9 @@
         z-index: 10000;
         border-radius: 5px;
     `;
- 
+
 			// 로그 지우기 버튼 생성
-			const clearButton = document.createElement('button'); 
+			const clearButton = document.createElement('button');
 			clearButton.textContent = 'Clear Logs';
 			clearButton.style.cssText = `
         position: absolute;
@@ -414,6 +431,10 @@
 			document.body.appendChild(logContainer);
 
 			// console 메소드 오버라이드
+			overrideConsoleMethods(logContainer);
+		}
+
+		function overrideConsoleMethods(logContainer) {
 			const originalConsole = {
 				log: console.log,
 				error: console.error,
@@ -459,73 +480,60 @@
 				logToPage(Array.from(arguments).join(' '), 'info');
 				originalConsole.info.apply(console, arguments);
 			};
-		});
-
-		function verifyToken(token) {
-			return new Promise((resolve, reject) => {
-				fetch('/verify-token', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/x-www-form-urlencoded'
-					},
-					body: `token=${encodeURIComponent(token)}`
-				})
-					.then(response => {
-						if (!response.ok) {
-							throw new Error('Network response was not ok ' + response.statusText);
-						}
-						return response.json();
-					})
-					.then(data => {
-						if (data.success) {
-							const decodedUser = decodeURIComponent(data.username);
-							resolve(decodedUser);
-							showWelcomeMessage(decodedUser);
-						} else {
-							reject('Token verification failed');
-							localStorage.removeItem('token');
-							showLoginForm();
-						}
-					})
-					.catch(error => {
-						console.error('Error during fetch:', error);
-						reject('An error occurred during token verification: ' + error);
-					});
-			});
 		}
+		async function verifyToken(token) {
+			const response = await fetch('/verify-token', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded'
+				},
+				body: `token=${encodeURIComponent(token)}`
+			});
 
-		// function verifyToken(token, callback) {
-		// 	fetch('/verify-token', {
-		// 		method: 'POST',
-		// 		headers: {
-		// 			'Content-Type': 'application/x-www-form-urlencoded'
-		// 		},
-		// 		body: `token=${encodeURIComponent(token)}`
-		// 	})
-		// 		.then(response => {
-		// 			if (!response.ok) {
-		// 				throw new Error('Network response was not ok ' + response.statusText);
-		// 			}
-		// 			return response.json();
-		// 		})
-		// 		.then(data => {
-		// 			if (data.success) {
+			if (!response.ok) {
+				throw new Error('Network response was not ok ' + response.statusText);
+			}
 
-		// 				const decodedUser = decodeURIComponent(data.username);
-		// 				callback(null, decodedUser);
-		// 				showWelcomeMessage(decodedUser);
-		// 			} else {
-		// 				callback('Token verification failed', null);
-		// 				localStorage.removeItem('token');
-		// 				showLoginForm();
-		// 			}
+			const data = await response.json();
+			if (data.success) {
+				return decodeURIComponent(data.username);
+			} else {
+				throw new Error('Token verification failed');
+			}
+		}
+		// async function verifyToken(token) {
+		// 	return new Promise((resolve, reject) => {
+		// 		fetch('/verify-token', {
+		// 			method: 'POST',
+		// 			headers: {
+		// 				'Content-Type': 'application/x-www-form-urlencoded'
+		// 			},
+		// 			body: `token=${encodeURIComponent(token)}`
 		// 		})
-		// 		.catch(error => {
-		// 			console.error('Error during fetch:', error);
-		// 			//alert('An error occurred during token verification' + error);
-		// 			callback(error, null);
-		// 		});
+		// 			.then(response => {
+		// 				if (!response.ok) {
+		// 					throw new Error('Network response was not ok ' + response.statusText);
+		// 				}
+		// 				return response.json();
+		// 			})
+		// 			.then(data => {
+		// 				if (data.success) {
+		// 					const decodedUser = decodeURIComponent(data.username);
+		// 					resolve(decodedUser);
+		// 					showWelcomeMessage(decodedUser);
+		// 				} else {
+		// 					reject('Token verification failed');
+		// 					localStorage.removeItem('token');
+		// 					showLoginForm();
+		// 				}
+		// 			})
+		// 			.catch(error => {
+		// 				console.error('Error during fetch:', error);
+		// 				reject('An error occurred during token verification: ' + error);
+		// 			});
+		// 	});
 		// }
+
 		function showSignupForm() {
 			document.getElementById('loginContainer').classList.remove('active');
 			document.getElementById('signupContainer').classList.add('active');
@@ -574,6 +582,7 @@
 			}
 			const username = document.getElementById('signup_username').value;
 			const password = document.getElementById('signup_password').value;
+			const email = document.getElementById('signup_email').value;
 			const confirmPassword = document.getElementById('signup_confirm_password').value;
 			const signupResult = document.getElementById('signupResult');
 			if (password == "") {
@@ -584,20 +593,35 @@
 				signupResult.textContent = 'Passwords do not match';
 				return;
 			}
+			const userData = {
+				username: username,
+				password: password,
+				email: email,
+			};
+
 			fetch('/signup', {
 				method: 'POST',
 				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded'
+					'Content-Type': 'application/json'
 				},
-				body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+				body: JSON.stringify(userData)
 			})
-				.then(response => response.text())
+				.then(response => response.json())
 				.then(data => {
-					signupResult.textContent = data;
-					fetchUserCount();
+					if (data.success) {
+						signupResult.textContent = '회원가입이 완료되었습니다.';
+						signupResult.style.color = 'green';
+						fetchUserCount();
+						setTimeout(() => {
+							showLoginForm();
+						}, 2000);
+					} else {
+						signupResult.textContent = data.message || '회원가입에 실패했습니다.';
+					}
 				})
 				.catch(error => {
 					console.error('Error:', error);
+					signupResult.textContent = '서버 오류가 발생했습니다.';
 				});
 		}
 		function submitLogin() {
@@ -608,26 +632,39 @@
 			fetch('/login', {
 				method: 'POST',
 				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded'
+					'Content-Type': 'application/json',
+					'X-Requested-With': 'XMLHttpRequest'
 				},
-				body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+				body: JSON.stringify({ username, password })
 			})
-				.then(response => response.json())
+				.then(response => {
+					if (!response.ok) {
+						throw new Error('Network response was not ok');
+					}
+					return response.json();
+				})
 				.then(data => {
 					if (data.success) {
+						// 토큰을 안전하게 저장 (HttpOnly 쿠키 사용 권장)
+						// 여기서는 예시로 localStorage를 사용
 						localStorage.setItem('token', data.token);
 						localStorage.setItem('username', data.username);
 						showWelcomeMessage(username);
 					} else {
 						loginResult.textContent = 'Login failed';
 					}
-					// const loginResult = document.getElementById('loginResult');
-					// loginResult.textContent = data;
 				})
 				.catch(error => {
 					console.error('Error:', error);
+					loginResult.textContent = 'An error occurred during login';
 				});
 		}
+
+		// HTTPS 연결 확인
+		if (window.location.protocol !== 'https:') {
+			console.warn('This page should be accessed over HTTPS for secure data transmission.');
+		}
+
 		async function submitComment(event) {
 			event.preventDefault(); // Prevent form from submitting the default way
 			const postId = document.getElementById('post-content').dataset.postId;
@@ -683,23 +720,40 @@
 			document.getElementById('signupContainer').classList.remove('active');
 			document.getElementById('welcomeContainer').classList.add('active');
 		}
-		function fetchUserCount() {
-			fetch('/usercount')
-				.then(response => response.json())
-				.then(data => {
-					const userCountDiv = document.getElementById('userCount');
-					if (data.success) {
-						userCountDiv.textContent = "Total users: " + data.user_count;
-					} else {
-						throw new Error(data.error || 'Unknown error occurred');
-					}
-				})
-				.catch(error => {
-					console.error('Error fetching user count:', error);
-					const userCountDiv = document.getElementById('userCount');
-					userCountDiv.textContent = "Error fetching user count";
-					userCountDiv.style.color = 'red';
-				});
+		// async function fetchUserCount() {
+		// 	fetch('/usercount')
+		// 		.then(response => response.json())
+		// 		.then(data => {
+		// 			const userCountDiv = document.getElementById('userCount');
+		// 			if (data.success) {
+		// 				userCountDiv.textContent = "Total users: " + data.user_count;
+		// 			} else {
+		// 				throw new Error(data.error || 'Unknown error occurred');
+		// 			}
+		// 		})
+		// 		.catch(error => {
+		// 			console.error('Error fetching user count:', error);
+		// 			const userCountDiv = document.getElementById('userCount');
+		// 			userCountDiv.textContent = "Error fetching user count";
+		// 			userCountDiv.style.color = 'red';
+		// 		});
+		// }
+		async function fetchUserCount() {
+			try {
+				const response = await fetch('/usercount');
+				const data = await response.json();
+				const userCountDiv = document.getElementById('userCount');
+				if (data.success) {
+					userCountDiv.textContent = "Total users: " + data.user_count;
+				} else {
+					throw new Error(data.error || 'Unknown error occurred');
+				}
+			} catch (error) {
+				console.error('Error fetching user count:', error);
+				const userCountDiv = document.getElementById('userCount');
+				userCountDiv.textContent = "Error fetching user count";
+				userCountDiv.style.color = 'red';
+			}
 		}
 		function toggleChatWindow() {
 			const chatWindow = document.getElementById('chat-window');
@@ -777,33 +831,53 @@
 				.then(data => {
 					const commentsContainer = document.getElementById('comments-container');
 					commentsContainer.innerHTML = '';
+
 					if (data.comments && Array.isArray(data.comments)) {
 						data.comments.forEach(comment => {
-							const timestamp = parseInt(comment.timestamp); // Convert timestamp string to integer
-							const date = new Date(timestamp); // Create a Date object
-
+							const timestamp = new Date(parseInt(comment.timestamp));
 							const commentElement = document.createElement('div');
 							commentElement.className = 'comment';
 							commentElement.innerHTML = `
-                        <p><strong>${comment.author}</strong>: ${comment.text}</p>
-                        <p><em>${date.toLocaleString()}</em></p>
-                        <button onclick="editComment(${comment.id})">Edit</button>
-                        <button onclick="deleteComment(${comment.id})">Delete</button>
+                        <div class="comment-header">
+                            <span class="comment-author">${comment.author}</span>
+                            <span class="comment-timestamp">${formatTimestamp(timestamp)}</span>
+                        </div>
+                        <div class="comment-text">${comment.text}</div>
+                        <div class="comment-actions">
+                            <button onclick="editComment(${comment.id})">Edit</button>
+                            <button onclick="deleteComment(${comment.id})">Delete</button>
+                        </div>
                     `;
 							commentsContainer.appendChild(commentElement);
 						});
 					} else {
 						const noCommentsElement = document.createElement('div');
 						noCommentsElement.className = 'no-comments';
-						noCommentsElement.innerText = 'No comments available.';
+						noCommentsElement.innerText = 'No comments yet. Be the first to comment!';
 						commentsContainer.appendChild(noCommentsElement);
 					}
 				})
 				.catch(error => {
 					console.error('Error:', error);
-					alert('Error on loadComments: ' + error);
+					alert('Error loading comments: ' + error);
 				});
 		}
+		function formatTimestamp(date) {
+			const now = new Date();
+			const diffTime = Math.abs(now - date);
+			const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+			if (diffDays < 1) {
+				return 'Today at ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+			} else if (diffDays === 1) {
+				return 'Yesterday at ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+			} else if (diffDays < 7) {
+				return diffDays + ' days ago';
+			} else {
+				return date.toLocaleDateString();
+			}
+		}
+
 		function editComment(commentId) {
 			const newText = prompt("Enter new comment text:");
 			if (newText) {
@@ -853,7 +927,10 @@
 					});
 			}
 		}
+
 		// 공통 3D 렌더링 함수
+
+		// 수정된 render3DModel 함수 (비동기 처리 추가)
 		function render3DModel(canvas, objContent, isUrl = false) {
 			const scene = new THREE.Scene();
 			const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
@@ -968,6 +1045,362 @@
 				renderer.setSize(width, height, false);
 			});
 		}
+
+		// async function render3DModel(canvas, objUrl, isUrl = true, mtlUrl = null, textureUrls = []) {
+		// 	return new Promise((resolve, reject) => {
+		// 		const scene = new THREE.Scene();
+		// 		const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+		// 		const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+		// 		renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+		// 		// 조명 설정
+		// 		const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+		// 		scene.add(ambientLight);
+		// 		const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+		// 		directionalLight.position.set(5, 5, 5).normalize();
+		// 		scene.add(directionalLight);
+
+		// 		// 컨트롤 설정
+		// 		const controls = new THREE.OrbitControls(camera, renderer.domElement);
+		// 		controls.enableDamping = true;
+		// 		controls.dampingFactor = 0.25;
+		// 		controls.screenSpacePanning = false;
+		// 		controls.maxPolarAngle = Math.PI / 2;
+
+		// 		const manager = new THREE.LoadingManager();
+		// 		manager.onProgress = function (item, loaded, total) {
+		// 			console.log(item, loaded, total);
+		// 		};
+
+		// 		const onProgress = function (xhr) {
+		// 			if (xhr.lengthComputable) {
+		// 				const percentComplete = xhr.loaded / xhr.total * 100;
+		// 				console.log('model ' + Math.round(percentComplete, 2) + '% downloaded');
+		// 			}
+		// 		};
+
+		// 		const onError = function (error) {
+		// 			console.error('An error happened', error);
+		// 			reject(error);
+		// 		};
+
+		// 		const mtlLoader = new THREE.MTLLoader(manager);
+		// 		const objLoader = new THREE.OBJLoader(manager);
+
+		// 		const loadModel = (object) => {
+		// 			scene.add(object);
+
+		// 			// 모델 크기에 맞게 카메라 조정
+		// 			const box = new THREE.Box3().setFromObject(object);
+		// 			const center = box.getCenter(new THREE.Vector3());
+		// 			const size = box.getSize(new THREE.Vector3());
+		// 			const maxDim = Math.max(size.x, size.y, size.z);
+		// 			const fov = camera.fov * (Math.PI / 180);
+		// 			let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+		// 			cameraZ *= 1.5; // 여유 공간
+		// 			camera.position.z = cameraZ;
+
+		// 			// 모델 중앙 정렬
+		// 			object.position.x = -center.x;
+		// 			object.position.y = -center.y;
+		// 			object.position.z = -center.z;
+
+		// 			// 애니메이션 루프
+		// 			function animate() {
+		// 				requestAnimationFrame(animate);
+		// 				controls.update();
+		// 				renderer.render(scene, camera);
+		// 			}
+		// 			animate();
+
+		// 			resolve();
+		// 		};
+
+		// 		if (mtlUrl) {
+		// 			mtlLoader.load(mtlUrl, function (materials) {
+		// 				materials.preload();
+		// 				objLoader.setMaterials(materials);
+		// 				objLoader.load(objUrl, loadModel, onProgress, onError);
+		// 			}, onProgress, onError);
+		// 		} else {
+		// 			objLoader.load(objUrl, loadModel, onProgress, onError);
+		// 		}
+
+		// 		// 텍스처 로드 및 적용
+		// 		if (textureUrls.length > 0) {
+		// 			const textureLoader = new THREE.TextureLoader(manager);
+		// 			textureUrls.forEach(url => {
+		// 				textureLoader.load(url, function (texture) {
+		// 					// 텍스처를 적용할 메시를 찾아 적용
+		// 					scene.traverse(function (child) {
+		// 						if (child instanceof THREE.Mesh) {
+		// 							child.material.map = texture;
+		// 							child.material.needsUpdate = true;
+		// 						}
+		// 					});
+		// 				});
+		// 			});
+		// 		}
+
+		// 		// 창 크기 조정 처리
+		// 		window.addEventListener('resize', function () {
+		// 			camera.aspect = canvas.clientWidth / canvas.clientHeight;
+		// 			camera.updateProjectionMatrix();
+		// 			renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+		// 		});
+		// 	});
+		// }
+		// // async function render3DModel(canvas, objUrl, isUrl = false, mtlUrl = null, textureUrls = []) {
+		// 	const scene = new THREE.Scene();
+		// 	const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+		// 	const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+		// 	renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+		// 	// OrbitControls 추가
+		// 	const controls = new THREE.OrbitControls(camera, renderer.domElement);
+		// 	controls.enableDamping = true;
+		// 	controls.dampingFactor = 0.25;
+		// 	controls.screenSpacePanning = false;
+		// 	controls.maxPolarAngle = Math.PI / 2;
+
+		// 	// 조명 추가
+		// 	const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+		// 	scene.add(ambientLight);
+		// 	const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+		// 	directionalLight.position.set(5, 5, 5).normalize();
+		// 	scene.add(directionalLight);
+
+		// 	// 프로그레스 바 생성
+		// 	const progressBarContainer = document.createElement('div');
+		// 	progressBarContainer.style.position = 'absolute';
+		// 	progressBarContainer.style.top = '10px';
+		// 	progressBarContainer.style.left = '10px';
+		// 	progressBarContainer.style.width = 'calc(100% - 20px)';
+		// 	progressBarContainer.style.height = '20px';
+		// 	progressBarContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+		// 	progressBarContainer.style.borderRadius = '10px';
+		// 	progressBarContainer.style.overflow = 'hidden';
+
+		// 	const progressBar = document.createElement('div');
+		// 	progressBar.style.width = '0%';
+		// 	progressBar.style.height = '100%';
+		// 	progressBar.style.backgroundColor = '#4CAF50';
+		// 	progressBar.style.transition = 'width 0.3s';
+
+		// 	progressBarContainer.appendChild(progressBar);
+		// 	canvas.parentNode.appendChild(progressBarContainer);
+
+		// 	const loadModel = (object) => {
+		// 		scene.add(object);
+
+		// 		// 객체가 화면에 꽉 차도록 카메라 위치 조정
+		// 		const box = new THREE.Box3().setFromObject(object);
+		// 		const center = box.getCenter(new THREE.Vector3());
+		// 		const size = box.getSize(new THREE.Vector3());
+		// 		const maxDim = Math.max(size.x, size.y, size.z);
+		// 		const fov = camera.fov * (Math.PI / 180);
+		// 		let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+		// 		cameraZ *= 1.5; // 여유 공간을 위해 1.5배 멀리 배치
+		// 		camera.position.z = cameraZ;
+
+		// 		// 객체를 중앙에 배치
+		// 		object.position.x = -center.x;
+		// 		object.position.y = -center.y;
+		// 		object.position.z = -center.z;
+
+		// 		// 애니메이션 함수
+		// 		const animate = function () {
+		// 			requestAnimationFrame(animate);
+		// 			controls.update();
+		// 			renderer.render(scene, camera);
+		// 		};
+		// 		animate();
+
+		// 		// 로딩 완료 후 프로그레스 바 숨기기
+		// 		progressBarContainer.style.display = 'none';
+		// 	};
+		// 	// OBJ 및 MTL 로더 초기화
+		// 	const manager = new THREE.LoadingManager();
+		// 	const objLoader = new THREE.OBJLoader();
+		// 	const mtlLoader = new THREE.MTLLoader();
+		// 	const textureLoader = new THREE.TextureLoader(manager);
+
+		// 	const onProgress = (xhr) => {
+		// 		if (xhr.lengthComputable) {
+		// 			const percentComplete = xhr.loaded / xhr.total * 100;
+		// 			progressBar.style.width = percentComplete + '%';
+		// 			console.log(percentComplete.toFixed(2) + '% downloaded');
+		// 		}
+		// 	};
+
+		// 	const onError = (error) => {
+		// 		console.error('An error happened', error);
+		// 		progressBarContainer.style.display = 'none';
+		// 	};
+
+		// 	const loadObjWithMtl = (objData, mtlData) => {
+		// 		if (mtlData) {
+		// 			const mtlCreator = new THREE.MTLLoader.MaterialCreator();
+		// 			mtlCreator.setMaterials(mtlLoader.parse(mtlData));
+		// 			objLoader.setMaterials(mtlCreator);
+		// 		}
+
+		// 		if (isUrl) {
+		// 			objLoader.load(objData, loadModel, onProgress, onError);
+		// 		} else {
+		// 			try {
+		// 				const object = objLoader.parse(objData);
+		// 				loadModel(object);
+		// 			} catch (error) {
+		// 				onError(error);
+		// 			}
+		// 		}
+		// 	};
+
+		// 	if (isUrl) {
+		// 		if (mtlUrl) {
+		// 			mtlLoader.load(mtlUrl, (materials) => {
+		// 				materials.preload();
+		// 				objLoader.setMaterials(materials);
+		// 				// 텍스처 로드
+		// 				textureUrls.forEach(url => {
+		// 					textureLoader.load(url, (texture) => {
+		// 						// 텍스처를 해당 재질에 적용
+		// 						// (이 부분은 MTL 파일의 구조에 따라 달라질 수 있음)
+		// 					});
+		// 				});
+		// 				objLoader.load(objUrl, loadModel, onProgress, onError);
+		// 			}, onProgress, onError);
+		// 		} else {
+		// 			loadObjWithMtl(objUrl, null);
+		// 		}
+		// 	} else {
+		// 		loadObjWithMtl(objUrl, mtlUrl);
+		// 	}
+
+		// 	// 창 크기 조정 처리
+		// 	window.addEventListener('resize', function () {
+		// 		const width = canvas.clientWidth;
+		// 		const height = canvas.clientHeight;
+		// 		camera.aspect = width / height;
+		// 		camera.updateProjectionMatrix();
+		// 		renderer.setSize(width, height, false);
+		// 	});
+		// }
+		// function render3DModel(canvas, objContent, isUrl = false, mtlContent = null) {
+		// 	const scene = new THREE.Scene();
+		// 	const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+		// 	const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+		// 	renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+		// 	// OrbitControls 추가
+		// 	const controls = new THREE.OrbitControls(camera, renderer.domElement);
+		// 	controls.enableDamping = true; // 부드러운 애니메이션을 위한 감쇠 효과
+		// 	controls.dampingFactor = 0.25;
+		// 	controls.screenSpacePanning = false;
+		// 	controls.maxPolarAngle = Math.PI / 2;
+
+		// 	// 조명 추가
+		// 	const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+		// 	scene.add(ambientLight);
+		// 	const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+		// 	directionalLight.position.set(5, 5, 5).normalize();
+		// 	scene.add(directionalLight);
+
+		// 	// 프로그레스 바 생성
+		// 	const progressBarContainer = document.createElement('div');
+		// 	progressBarContainer.style.position = 'absolute';
+		// 	progressBarContainer.style.top = '10px';
+		// 	progressBarContainer.style.left = '10px';
+		// 	progressBarContainer.style.width = 'calc(100% - 20px)';
+		// 	progressBarContainer.style.height = '20px';
+		// 	progressBarContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+		// 	progressBarContainer.style.borderRadius = '10px';
+		// 	progressBarContainer.style.overflow = 'hidden';
+
+		// 	const progressBar = document.createElement('div');
+		// 	progressBar.style.width = '0%';
+		// 	progressBar.style.height = '100%';
+		// 	progressBar.style.backgroundColor = '#4CAF50';
+		// 	progressBar.style.transition = 'width 0.3s';
+
+		// 	progressBarContainer.appendChild(progressBar);
+		// 	canvas.parentNode.appendChild(progressBarContainer);
+
+		// 	// OBJ 로더 초기화
+		// 	const loader = new THREE.OBJLoader();
+
+		// 	const loadModel = (object) => {
+		// 		// 로드된 객체에 기본 재질 적용
+		// 		object.traverse(function (child) {
+		// 			if (child instanceof THREE.Mesh) {
+		// 				child.material = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
+		// 			}
+		// 		});
+		// 		scene.add(object);
+
+		// 		// 객체가 화면에 꽉 차도록 카메라 위치 조정
+		// 		const box = new THREE.Box3().setFromObject(object);
+		// 		const center = box.getCenter(new THREE.Vector3());
+		// 		const size = box.getSize(new THREE.Vector3());
+		// 		const maxDim = Math.max(size.x, size.y, size.z);
+		// 		const fov = camera.fov * (Math.PI / 180);
+		// 		let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+		// 		cameraZ *= 1.5; // 여유 공간을 위해 1.5배 멀리 배치
+		// 		camera.position.z = cameraZ;
+
+		// 		// 객체를 중앙에 배치
+		// 		object.position.x = -center.x;
+		// 		object.position.y = -center.y;
+		// 		object.position.z = -center.z;
+
+		// 		// 애니메이션 함수
+		// 		const animate = function () {
+		// 			requestAnimationFrame(animate);
+		// 			controls.update(); // OrbitControls 업데이트
+		// 			renderer.render(scene, camera);
+		// 		};
+		// 		animate();
+
+		// 		// 로딩 완료 후 프로그레스 바 숨기기
+		// 		progressBarContainer.style.display = 'none';
+		// 	};
+
+		// 	const onProgress = (xhr) => {
+		// 		if (xhr.lengthComputable) {
+		// 			const percentComplete = xhr.loaded / xhr.total * 100;
+		// 			progressBar.style.width = percentComplete + '%';
+		// 			console.log(percentComplete.toFixed(2) + '% downloaded');
+		// 		}
+		// 	};
+
+		// 	const onError = (error) => {
+		// 		console.error('An error happened', error);
+		// 		progressBarContainer.style.display = 'none';
+		// 	};
+
+		// 	if (isUrl) {
+		// 		// URL에서 OBJ 파일 로드
+		// 		loader.load(objContent, loadModel, onProgress, onError);
+		// 	} else {
+		// 		// 문자열 내용에서 OBJ 파일 파싱
+		// 		try {
+		// 			const object = loader.parse(objContent);
+		// 			loadModel(object);
+		// 		} catch (error) {
+		// 			onError(error);
+		// 		}
+		// 	}
+
+		// 	// 창 크기 조정 처리
+		// 	window.addEventListener('resize', function () {
+		// 		const width = canvas.clientWidth;
+		// 		const height = canvas.clientHeight;
+		// 		camera.aspect = width / height;
+		// 		camera.updateProjectionMatrix();
+		// 		renderer.setSize(width, height, false);
+		// 	});
+		// }
 		async function showPostContent(id, title, author, timestamp, encodedContent) {
 			const content = decodeURIComponent(encodedContent);
 			document.getElementById('post-title').innerText = title;
@@ -982,6 +1415,9 @@
 
 			for (const container of objectContainers) {
 				const objUrl = container.getAttribute('data-obj-url');
+				const mtlUrl = container.getAttribute('data-mtl-url');
+				const textureUrls = JSON.parse(container.getAttribute('data-texture-urls') || '[]');
+
 				if (objUrl) {
 					try {
 						// 기존 canvas 찾기 (이미 존재함)
@@ -992,8 +1428,22 @@
 						}
 						// canvas 스타일 설정
 						canvas.style.width = '100%';
-						canvas.style.height = 'auto';
-						render3DModel(canvas, objUrl, true);
+						canvas.style.height = '400px'; // 고정 높이 설정
+
+						// 로딩 인디케이터 추가
+						const loadingIndicator = document.createElement('div');
+						loadingIndicator.textContent = 'Loading 3D model...';
+						loadingIndicator.style.position = 'absolute';
+						loadingIndicator.style.top = '50%';
+						loadingIndicator.style.left = '50%';
+						loadingIndicator.style.transform = 'translate(-50%, -50%)';
+						container.appendChild(loadingIndicator);
+
+						// 3D 모델 렌더링
+						await render3DModel(canvas, objUrl, true, mtlUrl, textureUrls);
+
+						// 로딩 인디케이터 제거
+						container.removeChild(loadingIndicator);
 					} catch (error) {
 						console.error('Error rendering OBJ:', error);
 						container.textContent = 'Error rendering 3D model';
@@ -1042,6 +1492,11 @@
 				loadDriveContent();
 			}
 		}
+
+		ModelContainerBlot.blotName = 'modelContainer';
+		ModelContainerBlot.tagName = 'div';
+		Quill.register(ModelContainerBlot);
+
 		var quill;
 		function EditPost() {
 			var form = document.getElementById('form1');
@@ -1077,17 +1532,51 @@
 				theme: 'snow'
 			});
 		}
-		function select3DFile() {
-			var input = document.createElement('input');
-			input.type = 'file';
-			input.accept = '.obj';
-			input.onchange = function (event) {
-				var file = event.target.files[0];
-				if (file) {
-					load3DModel(file);
+		function createModelEmbed(objFileName, objContent, mtlFileName = null, mtlContent = null) {
+			// 컨테이너 생성
+			var modelContainer = document.createElement('div');
+			modelContainer.style.width = '100%';
+			modelContainer.style.height = '400px';
+			modelContainer.style.position = 'relative';
+			modelContainer.style.background = '#f0f0f0';
+			modelContainer.style.marginTop = '10px';
+			modelContainer.setAttribute('data-obj-file', objContent);
+			modelContainer.setAttribute('data-obj-filename', objFileName);
+			if (mtlFileName && mtlContent) {
+				modelContainer.setAttribute('data-mtl-file', mtlContent);
+				modelContainer.setAttribute('data-mtl-filename', mtlFileName);
+			}
+
+			// Canvas 요소 생성
+			var canvas = document.createElement('canvas');
+			canvas.style.width = '100%';
+			canvas.style.height = '100%';
+			modelContainer.appendChild(canvas);
+
+			// Quill에 블록 삽입
+			var range = quill.getSelection(true);
+			quill.insertEmbed(range.index, 'modelContainer', modelContainer);
+
+			// 3D 모델 렌더링
+			setTimeout(() => {
+				render3DModel(canvas, objContent, mtlContent);
+			}, 100);
+		}
+
+		// Quill custom blot for 3D model container
+		var BlockEmbed = Quill.import('blots/block/embed');
+		class ModelContainerBlot extends BlockEmbed {
+			static create(value) {
+				let node = super.create();
+				node.setAttribute('data-obj-file', value.getAttribute('data-obj-file'));
+				node.setAttribute('data-obj-filename', value.getAttribute('data-obj-filename'));
+				if (value.hasAttribute('data-mtl-file')) {
+					node.setAttribute('data-mtl-file', value.getAttribute('data-mtl-file'));
+					node.setAttribute('data-mtl-filename', value.getAttribute('data-mtl-filename'));
 				}
-			};
-			input.click();
+				node.innerHTML = value.innerHTML;
+				return node;
+			}
 		}
 
 		function load3DModel(file) {
@@ -1150,6 +1639,123 @@
 			};
 			reader.readAsText(file);
 		}
+
+		function select3DFile() {
+			var input = document.createElement('input');
+			input.type = 'file';
+			input.accept = '.obj,.mtl,.jpg,.png,.tga';
+			input.multiple = true;  // 여러 파일 선택 가능
+			input.onchange = function (event) {
+				var files = event.target.files;
+				if (files.length > 0) {
+					load3DModel(files);
+				}
+			};
+			input.click();
+		}
+		async function uploadFile(file, fileType) {
+			const formData = new FormData();
+			formData.append(fileType, file);
+
+			try {
+				const response = await fetch('/uploadFile', {
+					method: 'POST',
+					body: formData
+				});
+
+				if (!response.ok) {
+					throw new Error(`${fileType} 업로드 실패: ${response.statusText}`);
+				}
+
+				const data = await response.json();
+
+				if (!data.success) {
+					throw new Error(data.message || `${fileType} 업로드 실패`);
+				}
+
+				if (!data.url) {
+					throw new Error(`${fileType} 업로드 성공했지만, URL이 제공되지 않았습니다.`);
+				}
+
+				return data.url;
+			} catch (error) {
+				console.error(`Error uploading ${fileType}:`, error);
+				throw error; // 상위 함수에서 처리할 수 있도록 에러를 다시 throw
+			}
+		}
+
+		async function insertModelIntoEditor(modelData) {
+			var range = quill.getSelection(true);
+			quill.insertEmbed(range.index, 'modelContainer', modelData);
+			quill.setSelection(range.index + 1);
+		}
+
+		// ModelContainerBlot 정의 및 등록 확인
+		if (typeof ModelContainerBlot !== 'undefined' && Quill.find(ModelContainerBlot) === null) {
+			console.log('Registering ModelContainerBlot');
+			Quill.register(ModelContainerBlot);
+		}
+		async function readFileContent(file) {
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = (event) => resolve(event.target.result);
+				reader.onerror = (error) => reject(error);
+				reader.readAsText(file);
+			});
+		}
+		async function readFileAsDataURL(file) {
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = (event) => resolve(event.target.result);
+				reader.onerror = (error) => reject(error);
+				reader.readAsDataURL(file);
+			});
+		}
+		async function processAndUpload3DFiles(files) {
+			var objFile, mtlFile, textureFiles = [];
+
+			// 파일 분류
+			for (var i = 0; i < files.length; i++) {
+				var file = files[i];
+				if (file.name.toLowerCase().endsWith('.obj')) {
+					objFile = file;
+				} else if (file.name.toLowerCase().endsWith('.mtl')) {
+					mtlFile = file;
+				} else if (file.name.toLowerCase().match(/\.(jpg|jpeg|png|tga)$/)) {
+					textureFiles.push(file);
+				}
+			}
+
+			if (!objFile) {
+				alert('OBJ 파일이 필요합니다.');
+				return;
+			}
+
+			// 3D 모델 데이터를 저장할 객체
+			const modelData = {
+				objFile: objFile,
+				mtlFile: mtlFile,
+				textureFiles: textureFiles
+			};
+
+			// 에디터에 3D 모델 컨테이너 삽입
+			insertModelIntoEditor(modelData);
+		}
+		// function insertModelIntoEditor(objUrl, mtlUrl, textureUrls) {
+		// 	console.log('call insertModelIntoEditor');
+		// 	var range = quill.getSelection(true);
+		// 	console.log('aftr range');
+		// 	quill.insertEmbed(range.index, 'modelContainer', {
+		// 		objUrl: objUrl,
+		// 		mtlUrl: mtlUrl,
+		// 		textureUrls: textureUrls
+		// 	});
+		// 	console.log('aftr quill.insertEmbed');
+		// 	quill.setSelection(range.index + 1);
+
+		// 	console.log('Model inserted:', { objUrl, mtlUrl, textureUrls });
+		// }
+
 		async function uploadObjFile(file) {
 			//alert('call uploadObjFile');
 			const formData = new FormData();
@@ -1168,6 +1774,41 @@
 				alert('Failed to upload .obj file');
 				throw new Error('Failed to upload .obj file');
 			}
+		}
+		async function uploadModelFiles(modelData) {
+			const urls = {
+				objUrl: '',
+				mtlUrl: '',
+				textureUrls: []
+			};
+
+			const uploadFile = async (file, fileType) => {
+				const formData = new FormData();
+				formData.append(fileType, file);
+
+				const response = await fetch('/uploadFile', {
+					method: 'POST',
+					body: formData
+				});
+
+				if (!response.ok) {
+					throw new Error(`${fileType} 업로드 실패`);
+				}
+
+				const data = await response.json();
+				return data.url;
+			};
+
+			urls.objUrl = await uploadFile(modelData.objFile, 'objFile');
+			if (modelData.mtlFile) {
+				urls.mtlUrl = await uploadFile(modelData.mtlFile, 'mtlFile');
+			}
+			for (let textureFile of modelData.textureFiles) {
+				const textureUrl = await uploadFile(textureFile, 'textureFile');
+				urls.textureUrls.push(textureUrl);
+			}
+
+			return urls;
 		}
 
 		async function savePost() {
@@ -1191,33 +1832,29 @@
 				}
 
 				let content = quill.root.innerHTML;
-				const author = username; // 로그인된 사용자 이름으로 author 설정
-				const timestamp = new Date().toISOString(); // 현재 시각을 ISO 형식으로 저장
 
-				// 파싱하여 캔버스 요소를 찾고 .obj 파일을 서버로 업로드
-				const parser = new DOMParser();
-				const doc = parser.parseFromString(content, 'text/html');
-				const canvases = doc.querySelectorAll('div[data-obj-file]');
-
-				for (const canvas of canvases) {
-					const objFileContent = canvas.getAttribute('data-obj-file');
-					const objFileName = canvas.getAttribute('data-obj-filename');  // 파일 이름 가져오기
-					if (objFileContent && objFileName) {
-						const file = new File([objFileContent], objFileName, { type: "text/plain" });  // 원래 파일 이름 사용
-						const url = await uploadObjFile(file);
-						canvas.setAttribute('data-obj-url', url);
-						canvas.removeAttribute('data-obj-file');
-						canvas.removeAttribute('data-obj-filename');  // 파일 이름 속성 제거
+				// 3D 모델 파일 업로드 및 URL 대체
+				const modelContainers = quill.root.querySelectorAll('.ql-modelContainer');
+				for (let container of modelContainers) {
+					const modelData = container.modelData;
+					if (modelData) {
+						const urls = await uploadModelFiles(modelData);
+						container.setAttribute('data-obj-url', urls.objUrl);
+						if (urls.mtlUrl) container.setAttribute('data-mtl-url', urls.mtlUrl);
+						if (urls.textureUrls.length > 0) {
+							container.setAttribute('data-texture-urls', JSON.stringify(urls.textureUrls));
+						}
 					}
 				}
 
-				content = doc.body.innerHTML;
+				// 업데이트된 content 가져오기
+				content = quill.root.innerHTML;
 
 				const postData = {
 					title: title,
 					content: content,
-					author: author,
-					timestamp: timestamp
+					author: username,
+					timestamp: new Date().toISOString()
 				};
 
 				const response = await fetch('/save_post', {
@@ -1232,13 +1869,13 @@
 
 				if (data.success) {
 					alert('Post saved successfully!');
-					loadPosts(); // 페이지가 로드될 때 게시글 목록을 로드
+					loadPosts();
 				} else {
 					alert('Failed to save post.');
 				}
 			} catch (error) {
 				console.error('Error:', error);
-				alert('Error' + error);
+				alert('Error: ' + error);
 			}
 		}
 	</script>

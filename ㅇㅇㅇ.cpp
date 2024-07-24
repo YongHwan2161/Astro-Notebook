@@ -1,121 +1,102 @@
-document.addEventListener('DOMContentLoaded', async () => {
-    // ... 기존 코드 ...
+#include <vector>
+#include <nlohmann/json.hpp>
+#include <openssl/ssl.h>
 
-    // 로그 컨테이너 생성
-    const logContainer = document.createElement('div');
-    logContainer.id = 'log-container';
-    logContainer.style.cssText = `
-        position: fixed;
-        bottom: 10px;
-        right: 10px;
-        width: 300px;
-        max-height: 400px;
-        overflow-y: auto;
-        background: rgba(0,0,0,0.8);
-        color: white;
-        font-family: monospace;
-        padding: 10px;
-        z-index: 9999;
-        display: none;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0,0,0,0.5);
-    `;
+using json = nlohmann::json;
 
-    // 토글 버튼 생성
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Show Logs';
-    toggleButton.style.cssText = `
-        position: fixed;
-        bottom: 10px;
-        right: 10px;
-        background: #007bff;
-        color: white;
-        border: none;
-        padding: 10px 15px;
-        cursor: pointer;
-        z-index: 10000;
-        border-radius: 5px;
-    `;
+// 파일 타입 열거형
+enum class FileType {
+    OBJ,
+    MTL,
+    TEXTURE
+};
 
-    // 로그 지우기 버튼 생성
-    const clearButton = document.createElement('button');
-    clearButton.textContent = 'Clear Logs';
-    clearButton.style.cssText = `
-        position: absolute;
-        top: 5px;
-        right: 5px;
-        background: #dc3545;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        cursor: pointer;
-        border-radius: 3px;
-    `;
+// 파일 정보 구조체
+struct FileInfo {
+    std::string filename;
+    std::string content;
+    FileType type;
+};
 
-    // 토글 기능 구현
-    let isVisible = false;
-    toggleButton.onclick = function () {
-        isVisible = !isVisible;
-        logContainer.style.display = isVisible ? 'block' : 'none';
-        toggleButton.textContent = isVisible ? 'Hide Logs' : 'Show Logs';
-    };
+// 파일 타입 확인 함수
+FileType getFileType(const std::string& filename) {
+    std::string ext = filename.substr(filename.find_last_of(".") + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    if (ext == "obj") return FileType::OBJ;
+    if (ext == "mtl") return FileType::MTL;
+    return FileType::TEXTURE;
+}
 
-    // 로그 지우기 기능 구현
-    clearButton.onclick = function () {
-        logContainer.innerHTML = '';
-        logContainer.appendChild(clearButton);
-    };
+void handleUpload3DFiles(SSL *ssl, const std::string &request_body)
+{
+    std::vector<FileInfo> files;
+    std::string boundary = extractBoundary(request_body);
+    std::vector<std::string> parts = splitMultipartData(request_body, boundary);
 
-    logContainer.appendChild(clearButton);
-    document.body.appendChild(toggleButton);
-    document.body.appendChild(logContainer);
-
-    // console 메소드 오버라이드
-    const originalConsole = {
-        log: console.log,
-        error: console.error,
-        warn: console.warn,
-        info: console.info
-    };
-
-    function logToPage(message, type) {
-        const logElement = document.createElement('div');
-        logElement.textContent = `[${type.toUpperCase()}] ${message}`;
-        logElement.style.cssText = `
-            margin-bottom: 5px;
-            padding: 5px;
-            border-radius: 3px;
-            background: ${type === 'error' ? 'rgba(255,0,0,0.2)' : 
-                          type === 'warn' ? 'rgba(255,255,0,0.2)' : 
-                          'rgba(255,255,255,0.1)'};
-        `;
-        logContainer.insertBefore(logElement, logContainer.firstChild);
-        
-        // 로그가 100개를 초과하면 가장 오래된 로그 제거
-        if (logContainer.children.length > 101) { // clearButton을 포함하므로 101
-            logContainer.removeChild(logContainer.lastChild);
+    for (const auto& part : parts) {
+        std::string filename;
+        std::string content = parseMultipartData(part, filename);
+        if (!filename.empty() && !content.empty()) {
+            files.push_back({filename, content, getFileType(filename)});
         }
     }
 
-    console.log = function () {
-        logToPage(Array.from(arguments).join(' '), 'log');
-        originalConsole.log.apply(console, arguments);
-    };
+    if (files.empty()) {
+        send_json_response2(ssl, 400, "Bad Request", json{{"success", false}, {"message", "No valid files found"}});
+        return;
+    }
 
-    console.error = function () {
-        logToPage(Array.from(arguments).join(' '), 'error');
-        originalConsole.error.apply(console, arguments);
-    };
+    json response;
+    response["success"] = true;
 
-    console.warn = function () {
-        logToPage(Array.from(arguments).join(' '), 'warn');
-        originalConsole.warn.apply(console, arguments);
-    };
+    for (const auto& file : files) {
+        std::string directory;
+        std::string urlPrefix;
+        switch (file.type) {
+            case FileType::OBJ:
+                directory = UPLOAD_OBJ_DIR;
+                urlPrefix = "uploads/objs/";
+                break;
+            case FileType::MTL:
+                directory = UPLOAD_MTL_DIR;
+                urlPrefix = "uploads/mtls/";
+                break;
+            case FileType::TEXTURE:
+                directory = UPLOAD_TEXTURE_DIR;
+                urlPrefix = "uploads/textures/";
+                break;
+        }
 
-    console.info = function () {
-        logToPage(Array.from(arguments).join(' '), 'info');
-        originalConsole.info.apply(console, arguments);
-    };
+        if (uploadFile(file.content, file.filename, directory)) {
+            std::string url = urlPrefix + file.filename;
+            switch (file.type) {
+                case FileType::OBJ:
+                    response["objUrl"] = url;
+                    break;
+                case FileType::MTL:
+                    response["mtlUrl"] = url;
+                    break;
+                case FileType::TEXTURE:
+                    if (!response.contains("textureUrls")) {
+                        response["textureUrls"] = json::array();
+                    }
+                    response["textureUrls"].push_back(url);
+                    break;
+            }
+        } else {
+            response["success"] = false;
+            response["message"] = "Failed to save file: " + file.filename;
+            send_json_response2(ssl, 500, "Internal Server Error", response);
+            return;
+        }
+    }
 
-    // ... 기존 코드의 나머지 부분 ...
-});
+    send_json_response2(ssl, 200, "OK", response);
+}
+
+// 헬퍼 함수들 (이미 구현되어 있다고 가정)
+std::string extractBoundary(const std::string &request_body);
+std::vector<std::string> splitMultipartData(const std::string &request_body, const std::string &boundary);
+std::string parseMultipartData(const std::string &part, std::string &filename);
+bool uploadFile(const std::string &content, const std::string &filename, const std::string &directory);
+void send_json_response2(SSL *ssl, int status_code, const std::string &status_message, const json &response_json);

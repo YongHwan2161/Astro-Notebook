@@ -1,0 +1,692 @@
+<!DOCTYPE HTML>
+<!--
+	Hielo by TEMPLATED
+	templated.co @templatedco
+	Released for free under the Creative Commons Attribution 3.0 license (templated.co/license)
+-->
+<html>
+
+<head>
+    <title>Astro Notebook</title>
+    <meta charset="utf-8">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <link href="https://cdn.jsdelivr.net/npm/quill@1.3.6/dist/quill.snow.css" rel="stylesheet">
+</head>
+
+<body>
+
+    <!-- Header -->
+    <header id="header" class="alt">
+        <div class="logo"><a href="/assets/html/index.html">Homepage <span>?</span></a></div>
+        <a href="#menu">Menu</a>
+    </header><!-- Nav -->
+    <nav id="menu">
+        <ul class="links">
+            <!-- <li><a href="/assets/html/index.html">Home</a></li> -->
+            <li><a href="#" onclick="showSection('banner')">Home</a></li>
+            <!-- <li><a href="/assets/html/generic.html">Project</a></li> -->
+            <li><a href="#" onclick="showSection('banner_project')">게시판</a></li>
+            <li><a href="#" onclick="showSection('banner_drive')">Drive</a></li>
+            <li><a href="/assets/html/starMap2.html" target="_blank">Star Map</a></li>
+            <!-- <li><a href="/assets/html/elements.html">Blog</a></li>
+			<li><a href="/assets/html/edit.html" target="_blank">Edit</a></li> -->
+        </ul>
+        <div id="loginContainer" class="form-container active">
+            <h1>Login</h1>
+            <form id="loginForm">
+                <div class="11u 12u$(xsmall)">
+                    <input type="text" name="name" id="login_username" value="" placeholder="Name">
+                    <input type="password" name="name" id="login_password" value="" placeholder="password">
+                </div>
+                <input type="button" value="Login" onclick="submitLogin(event)">
+                <input type="button" value="Signup" onclick="showSignupForm()">
+            </form>
+            <div id="loginResult"></div>
+        </div>
+        <div id="signupContainer" class="form-container">
+            <h1>Signup</h1>
+            <form id="signupForm">
+                <div class="11u 12u$(xsmall)">
+                    <input type="text" name="name" id="signup_username" value="" placeholder="user name">
+                    <button type="button" onclick="checkUsername()">중복확인</button>
+                    <input type="password" name="name" id="signup_password" value="" placeholder="password"
+                        style="color: white;">
+                    <input type="password" name="name" id="signup_confirm_password" value=""
+                        placeholder="Confirm password" style="color: white;">
+                    <input type="button" value="Signup" onclick="submitSignup()">
+                    <input type="button" value="Back to Login" onclick="showLoginForm()">
+                </div>
+            </form>
+            <div id="signupResult" style="color: rgb(245, 6, 6);"></div>
+        </div>
+
+        <div id="welcomeContainer" class="form-container">
+            <h1>Welcome</h1>
+            <p id="welcomeMessage" style="color: white;"></p>
+            <button onclick="logout()">Logout</button>
+        </div>
+
+        <!-- <a>Total Users: </a> -->
+        <div id="userCount" style="color: white;"></div>
+
+    </nav>
+
+    <!-- Banner -->
+    <div id="banner">
+        <section class="banner full">
+            <article><img src="/images/slide01.jpg" alt="" width="1440" height="961">
+                <div class="inner">
+                    <header>
+                        <p>A free responsive web site template by <a href="https://templated.co">TEMPLATED</a></p>
+                        <h2>Hielo</h2>
+                    </header>
+                </div>
+            </article>
+            <article><img src="/images/slide02.jpg" alt="" width="1440" height="961">
+                <div class="inner">
+                    <header>
+                        <p>Lorem ipsum dolor sit amet nullam feugiat</p>
+                        <h2>Magna</h2>
+                    </header>
+                </div>
+            </article>
+            <article><img src="/images/slide03.jpg" alt="" width="1440" height="962">
+                <div class="inner">
+                    <header>
+                        <p>Sed cursus aliuam veroeros lorem ipsum nullam</p>
+                        <h2>Tempus</h2>
+                    </header>
+                </div>
+            </article>
+            <article><img src="/images/slide04.jpg" alt="" width="1440" height="961">
+                <div class="inner">
+                    <header>
+                        <p>Adipiscing lorem ipsum feugiat sed phasellus consequat</p>
+                        <h2>Etiam</h2>
+                    </header>
+                </div>
+            </article>
+            <article><img src="/images/slide05.jpg" alt="" width="1440" height="962">
+                <div class="inner">
+                    <header>
+                        <p>Ipsum dolor sed magna veroeros lorem ipsum</p>
+                        <h2>Adipiscing</h2>
+                    </header>
+                </div>
+            </article>
+        </section><!-- One -->
+        <section id="one" class="wrapper style2">
+            <div class="inner">
+                <div class="grid-style">
+
+                    <div>
+                        <div class="box">
+                            <div class="image fit">
+                                <img src="/images/pic02.jpg" alt="" width="600" height="300">
+                            </div>
+                            <div class="content">
+                                <header class="align-center">
+                                    <p>maecenas sapien feugiat ex purus</p>
+                                    <h2>Lorem ipsum dolor</h2>
+                                </header>
+                                <p> Cras aliquet urna ut sapien tincidunt, quis malesuada elit facilisis. Vestibulum sit
+                                    amet tortor velit. Nam elementum nibh a libero pharetra elementum. Maecenas feugiat
+                                    ex
+                                    purus, quis volutpat lacus placerat malesuada.</p>
+                                <footer class="align-center"><a href="#" class="button alt">Learn More</a>
+                                </footer>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="box">
+                            <div class="image fit">
+                                <img src="/images/pic03.jpg" alt="" width="600" height="300">
+                            </div>
+                            <div class="content">
+                                <header class="align-center">
+                                    <p>mattis elementum sapien pretium tellus</p>
+                                    <h2>Vestibulum sit amet</h2>
+                                </header>
+                                <p> Cras aliquet urna ut sapien tincidunt, quis malesuada elit facilisis. Vestibulum sit
+                                    amet tortor velit. Nam elementum nibh a libero pharetra elementum. Maecenas feugiat
+                                    ex
+                                    purus, quis volutpat lacus placerat malesuada.</p>
+                                <footer class="align-center"><a href="#" class="button alt">Learn More</a>
+                                </footer>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section><!-- Two -->
+        <section id="two" class="wrapper style3">
+            <div class="inner">
+                <header class="align-center">
+                    <p>Nam vel ante sit amet libero scelerisque facilisis eleifend vitae urna</p>
+                    <h2>Morbi maximus justo</h2>
+                </header>
+            </div>
+        </section><!-- Three -->
+        <section id="three" class="wrapper style2">
+            <div class="inner">
+                <header class="align-center">
+                    <p class="special">Nam vel ante sit amet libero scelerisque facilisis eleifend vitae urna</p>
+                    <h2>Morbi maximus justo</h2>
+                </header>
+                <div class="gallery">
+                    <div>
+                        <div class="image fit">
+                            <a href="#"><img src="/images/pic01.jpg" alt="" width="600" height="300"></a>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="image fit">
+                            <a href="#"><img src="/images/pic02.jpg" alt="" width="600" height="300"></a>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="image fit">
+                            <a href="#"><img src="/images/pic03.jpg" alt="" width="600" height="300"></a>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="image fit">
+                            <a href="#"><img src="/images/pic04.jpg" alt="" width="600" height="300"></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="banner_project" class="hidden">
+        <!-- One -->
+        <section id="One" class="wrapper style3">
+            <div class="inner">
+                <header class="align-center">
+                    <!-- <p>Eleifend vitae urna</p> -->
+                    <h2>게시판</h2>
+                </header>
+            </div>
+        </section>
+        <!-- Two -->
+        <section id="two" class="wrapper style2">
+            <div class="inner">
+                <div class="box">
+                    <table id="posts-table" border="1">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Author</th>
+                                <th>Timestamp</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="posts-container"></tbody>
+                    </table>
+                    <div id="post-content">
+                        <h2 id="post-title"></h2>
+                        <p id="post-author-timestamp"></p>
+                        <p id="post-body"></p>
+                        <div id="comments-section">
+                            <h3>Comments</h3>
+                            <div id="comments-container"></div>
+                            <form id="comment-form" onsubmit="submitComment(event)">
+                                <textarea id="comment-text" rows="3" placeholder="Write a comment..."></textarea>
+                                <button type="submit">Submit</button>
+                            </form>
+                        </div>
+                        <button onclick="hidePostContent()">Back to List</button>
+                    </div>
+                    <div class="content">
+                        <div class="11u 12u$(xsmall)">
+                            <input type="button" value="게시글 작성" onclick="EditPost()">
+                        </div>
+                        <div id="editor2">
+                            <form id="form1">
+                                <div class="form-group">
+                                    <input id="name" name="name" type="text" placeholder="제목">
+                                </div>
+                                <div class="form-group">
+                                    <div id="editor-container">
+                                    </div>
+                                </div>
+                                <input type="button" value="save" onclick="savePost()">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+    <!-- Drive Section -->
+    <div id="banner_drive" class="hidden">
+        <section id="One" class="wrapper style3">
+            <div class="inner">
+                <header class="align-center">
+                    <h2>My Drive</h2>
+                </header>
+            </div>
+        </section>
+        <section id="two" class="wrapper style2">
+            <div class="inner">
+                <div id="drive-controls">
+                    <input type="file" id="file-upload" style="display: none;" multiple>
+                    <button onclick="document.getElementById('file-upload').click()">Upload Files</button>
+                    <button onclick="window.createFolder()">New Folder</button>
+                    <button onclick="window.toggleView()">Toggle View</button>
+                </div>
+                <div id="current-path"></div>
+                <div id="drive-content"></div>
+            </div>
+        </section>
+    </div>
+    <div id="logContainer">
+    </div>
+    <!-- Footer -->
+    <footer id="footer">
+        <div class="container">
+            <ul class="icons">
+                <li><a href="#" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+                <li><a href="#" class="icon fa-facebook"><span class="label">Facebook</span></a></li>
+                <li><a href="#" class="icon fa-instagram"><span class="label">Instagram</span></a></li>
+                <li><a href="#" class="icon fa-envelope-o"><span class="label">Email</span></a></li>
+            </ul>
+        </div>
+    </footer>
+    <div class="copyright">
+        Made with <a href="https://templated.co/">Templated</a>.
+    </div>
+
+    <div id="chat-icon" onclick="toggleChatWindow()">💬</div>
+    <div id="chat-window">
+        <header>Chat</header>
+        <div class="content">
+            <p>Welcome to our chat service!</p>
+        </div>
+        <footer>
+            <input type="text" placeholder="Type a message...">
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/assets/js/jquery.min.js"></script>
+    <script src="/assets/js/jquery.scrollex.min.js"></script>
+    <script src="/assets/js/skel.min.js"></script>
+    <script src="/assets/js/util.js"></script>
+    <script src="/assets/js/main.js"></script>
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script src="https://webgl2fundamentals.org/webgl/resources/flattened-primitives.js"></script>
+
+    <script src="/assets/js/app.js" type="module"></script>
+    <script>
+
+        document.addEventListener('DOMContentLoaded', async () => {
+
+            fetchUserCount();
+
+            // 로그 컨테이너 생성
+            const logContainer = document.createElement('div');
+            logContainer.id = 'log-container';
+            logContainer.style.cssText = `
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        width: 300px;
+        max-height: 400px;
+        overflow-y: auto;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        font-family: monospace;
+        padding: 10px;
+        z-index: 9999;
+        display: none;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    `;
+
+            // 토글 버튼 생성
+            const toggleButton = document.createElement('button');
+            toggleButton.textContent = 'Show Logs';
+            toggleButton.style.cssText = `
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 10px;
+        cursor: pointer;
+        z-index: 10000;
+        border-radius: 5px;
+    `;
+
+            // 로그 지우기 버튼 생성
+            const clearButton = document.createElement('button');
+            clearButton.textContent = 'Clear Logs';
+            clearButton.style.cssText = `
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 3px;
+    `;
+
+            // 토글 기능 구현
+            let isVisible = false;
+            toggleButton.onclick = function () {
+                isVisible = !isVisible;
+                logContainer.style.display = isVisible ? 'block' : 'none';
+                toggleButton.textContent = isVisible ? 'Hide Logs' : 'Show Logs';
+            };
+
+            // 로그 지우기 기능 구현
+            clearButton.onclick = function () {
+                logContainer.innerHTML = '';
+                logContainer.appendChild(clearButton);
+            };
+
+            logContainer.appendChild(clearButton);
+            document.body.appendChild(toggleButton);
+            document.body.appendChild(logContainer);
+
+            // console 메소드 오버라이드
+            const originalConsole = {
+                log: console.log,
+                error: console.error,
+                warn: console.warn,
+                info: console.info
+            };
+
+            function logToPage(message, type) {
+                const logElement = document.createElement('div');
+                logElement.textContent = `[${type.toUpperCase()}] ${message}`;
+                logElement.style.cssText = `
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 3px;
+            background: ${type === 'error' ? 'rgba(255,0,0,0.2)' :
+                        type === 'warn' ? 'rgba(255,255,0,0.2)' :
+                            'rgba(255,255,255,0.1)'};
+        `;
+                logContainer.insertBefore(logElement, logContainer.firstChild);
+
+                // 로그가 100개를 초과하면 가장 오래된 로그 제거
+                if (logContainer.children.length > 101) { // clearButton을 포함하므로 101
+                    logContainer.removeChild(logContainer.lastChild);
+                }
+            }
+
+            console.log = function () {
+                logToPage(Array.from(arguments).join(' '), 'log');
+                originalConsole.log.apply(console, arguments);
+            };
+
+            console.error = function () {
+                logToPage(Array.from(arguments).join(' '), 'error');
+                originalConsole.error.apply(console, arguments);
+            };
+
+            console.warn = function () {
+                logToPage(Array.from(arguments).join(' '), 'warn');
+                originalConsole.warn.apply(console, arguments);
+            };
+
+            console.info = function () {
+                logToPage(Array.from(arguments).join(' '), 'info');
+                originalConsole.info.apply(console, arguments);
+            };
+        });
+
+        let isUsernameAvailable = false;
+        document.getElementById('signupButton').disabled = true;
+       function fetchUserCount() {
+            fetch('/usercount')
+                .then(response => response.json())
+                .then(data => {
+                    const userCountDiv = document.getElementById('userCount');
+                    if (data.success) {
+                        userCountDiv.textContent = "Total users: " + data.user_count;
+                    } else {
+                        throw new Error(data.error || 'Unknown error occurred');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching user count:', error);
+                    const userCountDiv = document.getElementById('userCount');
+                    userCountDiv.textContent = "Error fetching user count";
+                    userCountDiv.style.color = 'red';
+                });
+        }
+        function toggleChatWindow() {
+            const chatWindow = document.getElementById('chat-window');
+            if (chatWindow.style.display === 'none' || chatWindow.style.display === '') {
+                chatWindow.style.display = 'block';
+            } else {
+                chatWindow.style.display = 'none';
+            }
+        }
+        function dataURItoBlob(dataURI) {
+            const byteString = atob(dataURI.split(',')[1]);
+            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], { type: mimeString });
+        }
+
+        function loadImage() {
+            fetch('/images')
+                .then(response => response.json())
+                .then(data => {
+                    const gallery = document.getElementById('gallery');
+                    gallery.innerHTML = '';  // Clear existing images
+
+                    data.forEach(image => {
+                        const imgElement = document.createElement('img');
+                        imgElement.src = `./images/${image}`;
+                        imgElement.alt = image;
+                        gallery.appendChild(imgElement);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching images:', error);
+                    alert('Error: ' + error);
+                });
+        }
+        var quill;
+
+        function readFile(file, readAs = 'text') {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (event) => resolve(event.target.result);
+                reader.onerror = (error) => reject(error);
+                if (readAs === 'dataURL') {
+                    reader.readAsDataURL(file);
+                } else {
+                    reader.readAsText(file);
+                }
+            });
+        }
+        function select3DFile() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = '.obj,.mtl,.png,.jpg,.jpeg';
+            input.onchange = function (event) {
+                var files = event.target.files;
+                if (files.length > 0) {
+                    load3DModel(files);
+                }
+            };
+            input.click();
+        }
+        async function load3DModel(files) {
+            let objFile, mtlFile, textureFiles = [];
+            for (let file of files) {
+                if (file.name.endsWith('.obj')) objFile = file;
+                else if (file.name.endsWith('.mtl')) mtlFile = file;
+                else if (/\.(png|jpg|jpeg)$/i.test(file.name)) textureFiles.push(file);
+            }
+
+            if (!objFile) {
+                alert('OBJ file is required.');
+                return;
+            }
+
+            try {
+                const objContent = await readFile(objFile);
+                let mtlContent = null;
+                let textureContents = [];
+
+                if (mtlFile) {
+                    mtlContent = await readFile(mtlFile);
+                }
+
+                for (let textureFile of textureFiles) {
+                    const textureContent = await readFile(textureFile, 'dataURL');
+                    textureContents.push({
+                        name: textureFile.name,
+                        content: textureContent
+                    });
+                }
+
+                // Create a container for the canvas
+                var canvasContainer = document.createElement('div');
+                canvasContainer.style.width = '100%';
+                canvasContainer.style.height = '400px';
+                canvasContainer.style.position = 'relative';
+                canvasContainer.style.background = '#f0f0f0';
+                canvasContainer.style.marginTop = '10px';
+
+                // Set attributes for OBJ file
+                canvasContainer.setAttribute('data-obj-file', objContent);
+                canvasContainer.setAttribute('data-obj-filename', objFile.name);
+
+                // Set attributes for MTL file if exists
+                if (mtlContent) {
+                    canvasContainer.setAttribute('data-mtl-file', mtlContent);
+                    canvasContainer.setAttribute('data-mtl-filename', mtlFile.name);
+                }
+
+                // Set attributes for texture files
+                if (textureContents.length > 0) {
+                    canvasContainer.setAttribute('data-texture-files', JSON.stringify(textureContents));
+                }
+
+                // Create a canvas element to render the 3D model
+                var canvas = document.createElement('canvas');
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvasContainer.appendChild(canvas);
+
+                // Create a block blot for the canvas container
+                var Block = Quill.import('blots/block/embed');
+                class CanvasBlot extends Block {
+                    static create(value) {
+                        let node = super.create();
+                        Object.keys(value).forEach(key => {
+                            if (key === 'style') {
+                                node.setAttribute('style', value[key]);
+                            } else if (key === 'data-texture-files') {
+                                node.setAttribute(key, JSON.stringify(value[key]));
+                            } else {
+                                node.setAttribute(key, value[key]);
+                            }
+                        });
+                        node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
+                        return node;
+                    }
+                    static value(node) {
+                        const attrs = node.attributes;
+                        const value = {};
+                        for (let i = 0; i < attrs.length; i++) {
+                            if (attrs[i].name === 'data-texture-files') {
+                                value[attrs[i].name] = JSON.parse(attrs[i].value);
+                            } else {
+                                value[attrs[i].name] = attrs[i].value;
+                            }
+                        }
+                        return value;
+                    }
+                }
+                CanvasBlot.blotName = 'canvas';
+                CanvasBlot.tagName = 'div';
+                Quill.register(CanvasBlot);
+
+                // Insert the canvas container as a block blot
+                var range = quill.getSelection(true);
+                quill.insertEmbed(range.index, 'canvas', {
+                    style: canvasContainer.getAttribute('style'),
+                    'data-obj-file': objContent,
+                    'data-obj-filename': objFile.name,
+                    'data-mtl-file': mtlContent || '',
+                    'data-mtl-filename': mtlFile ? mtlFile.name : '',
+                    'data-texture-files': textureContents
+                });
+
+                // 3D 모델 렌더링
+                setTimeout(() => {
+                    var canvasElements = document.querySelectorAll('canvas');
+                    var lastCanvas = canvasElements[canvasElements.length - 1];
+                    render3DModel(lastCanvas, objContent, mtlContent, textureContents, false);
+                }, 100);
+            } catch (error) {
+                console.error('Error processing files:', error);
+                alert('Failed to process files: ' + error.message);
+            }
+        }
+
+        async function uploadObjFile(file) {
+            //alert('call uploadObjFile');
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/upload_obj', { // 서버에 .obj 파일을 업로드할 엔드포인트 설정
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert(data.url);
+                return data.url; // 서버가 반환한 .obj 파일의 URL
+            } else {
+                alert('Failed to upload .obj file');
+                throw new Error('Failed to upload .obj file');
+            }
+        }
+
+        async function uploadFile(file, filename) {
+            const formData = new FormData();
+            formData.append('file', file, filename);
+
+            const response = await fetch('/upload_file', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                return data.url;
+            } else {
+                throw new Error('Failed to upload file: ' + filename);
+            }
+        }
+
+    </script>
+</body>
+
+</html>

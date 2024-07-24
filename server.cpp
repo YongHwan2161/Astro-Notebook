@@ -348,7 +348,7 @@ std::unordered_map<std::string, std::string> parse_urlencoded(const std::string 
 // 데이터베이스 초기화 함수
 void init_database()
 {
-    int rc = sqlite3_open("users.db", &db);
+    int rc = sqlite3_open("users copy.db", &db);
     if (rc)
     {
         std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
@@ -609,31 +609,66 @@ void handle_signup(int client_socket, const std::string &body)
     }
     // close(client_socket);
 }
+// 비밀번호 해싱 함수
+std::string hash_password(const std::string& password, const std::string& salt) {
+    std::string salted_password = salt + password;
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, salted_password.c_str(), salted_password.length());
+    SHA256_Final(hash, &sha256);
+    std::stringstream ss;
+    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
+    }
+    return ss.str();
+}
 // 사용자 정보를 데이터베이스에서 확인하는 함수
-bool verify_user(const std::string &username, const std::string &password)
-{
-    const char *sql_select = "SELECT PASSWORD FROM USERS WHERE USERNAME = ?;";
+bool verify_user(sqlite3* db, const std::string &username, const std::string &password) {
+    const char *sql_select = "SELECT PASSWORD, SALT FROM USERS WHERE USERNAME = ?;";
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db, sql_select, -1, &stmt, 0);
-    if (rc != SQLITE_OK)
-    {
+    if (rc != SQLITE_OK) {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         return false;
     }
-
     sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
-
     rc = sqlite3_step(stmt);
-    if (rc == SQLITE_ROW)
-    {
+    if (rc == SQLITE_ROW) {
         std::string stored_password = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+        std::string salt = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
         sqlite3_finalize(stmt);
-        return stored_password == password;
+        
+        std::string hashed_input = hash_password(password, salt);
+        return stored_password == hashed_input;
     }
-
     sqlite3_finalize(stmt);
     return false;
 }
+// bool verify_user(const std::string &username, const std::string &password)
+// {
+//     const char *sql_select = "SELECT PASSWORD FROM USERS WHERE USERNAME = ?;";
+//     sqlite3_stmt *stmt;
+//     int rc = sqlite3_prepare_v2(db, sql_select, -1, &stmt, 0);
+//     if (rc != SQLITE_OK)
+//     {
+//         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+//         return false;
+//     }
+
+//     sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
+
+//     rc = sqlite3_step(stmt);
+//     if (rc == SQLITE_ROW)
+//     {
+//         std::string stored_password = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+//         sqlite3_finalize(stmt);
+//         return stored_password == password;
+//     }
+
+//     sqlite3_finalize(stmt);
+//     return false;
+// }
 std::string hmac_sha256(const std::string &key, const std::string &data)
 {
     unsigned char *digest;
@@ -673,55 +708,89 @@ std::string create_jwt(const std::string &username, const std::string &secret_ke
 // 로그인 요청을 처리하는 함수
 void handle_login(int client_socket, const std::string &body)
 {
-    auto params = parse_urlencoded(body);
-    if (params.find("username") != params.end() && params.find("password") != params.end())
+    json response;
+    try
     {
-        std::string username = params["username"];
-        std::string password = params["password"];
-        std::ostringstream response;
-        if (verify_user(username, password))
+        // Parse JSON body
+        json request_data = json::parse(body);
+
+        // Check for required fields
+        if (!request_data.contains("username") || !request_data.contains("password"))
+        {
+            throw std::runtime_error("Missing username or password");
+        }
+
+        std::string username = request_data["username"];
+        std::string password = request_data["password"];
+
+        // Verify user credentials
+        if (verify_user(db, username, password))
         {
             std::string token = create_jwt(username, SECRET_KEY);
-            std::string response_body = "Login successful";
-            // std::string response = "HTTP/1.1 200 OK\r\n"
-            //                        "Content-Type: text/plain\r\n"
-            //                        "Content-Length: " +
-            //                        std::to_string(response_body.size()) + "\r\n"
-            //                                                               "Connection: close\r\n\r\n" +
-            //                        response_body;
-
-            response << "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
-                     << "{\"success\": true, \"token\": \"" << token << "\"}";
-            // send(client_socket, response.c_str(), response.size(), 0);
+            response["success"] = true;
+            response["token"] = token;
+            response["username"] = username;
         }
         else
         {
-            // std::string response_body = "Login failed";
-            // std::string response = "HTTP/1.1 401 Unauthorized\r\n"
-            //                        "Content-Type: text/plain\r\n"
-            //                        "Content-Length: " +
-            //                        std::to_string(response_body.size()) + "\r\n"
-            //                                                               "Connection: close\r\n\r\n" +
-            //                        response_body;
-            response << "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
-                     << "{\"success\": false}";
+            response["success"] = false;
+            response["message"] = "Invalid credentials";
         }
-
-        send(client_socket, response.str().c_str(), response.str().length(), 0);
     }
-    else
+    catch (const std::exception &e)
     {
-        std::string response_body = "Bad Request";
-        std::string response = "HTTP/1.1 400 Bad Request\r\n"
-                               "Content-Type: text/plain\r\n"
-                               "Content-Length: " +
-                               std::to_string(response_body.size()) + "\r\n"
-                                                                      "Connection: close\r\n\r\n" +
-                               response_body;
-        send(client_socket, response.c_str(), response.size(), 0);
+        response["success"] = false;
+        response["message"] = e.what();
     }
-    // close(client_socket);
+
+    // Send response
+    std::string response_body = response.dump();
+    std::ostringstream response_stream;
+    response_stream << "HTTP/1.1 200 OK\r\n"
+                    << "Content-Type: application/json\r\n"
+                    << "Content-Length: " << response_body.length() << "\r\n"
+                    << "X-Content-Type-Options: nosniff\r\n"
+                    << "X-Frame-Options: DENY\r\n"
+                    << "X-XSS-Protection: 1; mode=block\r\n"
+                    << "\r\n"
+                    << response_body;
+
+    send(client_socket, response_stream.str().c_str(), response_stream.str().length(), 0);
 }
+// void handle_login(int client_socket, const std::string &body)
+// {
+//     auto params = parse_urlencoded(body);
+//     if (params.find("username") != params.end() && params.find("password") != params.end())
+//     {
+//         std::string username = params["username"];
+//         std::string password = params["password"];
+//         std::ostringstream response;
+//         if (verify_user(username, password))
+//         {
+//             std::string token = create_jwt(username, SECRET_KEY);
+//             std::string response_body = "Login successful";
+//             response << "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+//                      << "{\"success\": true, \"token\": \"" << token << "\"}";
+//         }
+//         else
+//         {
+//             response << "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+//                      << "{\"success\": false}";
+//         }
+//         send(client_socket, response.str().c_str(), response.str().length(), 0);
+//     }
+//     else
+//     {
+//         std::string response_body = "Bad Request";
+//         std::string response = "HTTP/1.1 400 Bad Request\r\n"
+//                                "Content-Type: text/plain\r\n"
+//                                "Content-Length: " +
+//                                std::to_string(response_body.size()) + "\r\n"
+//                                                                       "Connection: close\r\n\r\n" +
+//                                response_body;
+//         send(client_socket, response.c_str(), response.size(), 0);
+//     }
+// }
 // 사용자 이름이 데이터베이스에 있는지 확인하는 함수
 bool is_username_taken(const std::string &username)
 {
@@ -792,7 +861,7 @@ void handle_check_username(int client_socket, const std::string &body)
     // close(client_socket);
 }
 // 사용자 수를 데이터베이스에서 가져오는 함수
-void send_json_response2(int client_socket, int status_code, const std::string& status_message, const json& response_json)
+void send_json_response2(int client_socket, int status_code, const std::string &status_message, const json &response_json)
 {
     std::string json_str = response_json.dump();
     std::ostringstream response_stream;
@@ -805,14 +874,16 @@ void send_json_response2(int client_socket, int status_code, const std::string& 
     std::string response = response_stream.str();
 
     // 디버깅: 전송할 응답 출력
-    std::cout << "Sending response:\n" << response << std::endl;
+    std::cout << "Sending response:\n"
+              << response << std::endl;
 
     ssize_t bytes_sent = send(client_socket, response.c_str(), response.length(), 0);
-    
+
     // 디버깅: 전송된 바이트 수 확인
     std::cout << "Bytes sent: " << bytes_sent << " out of " << response.length() << std::endl;
 
-    if (bytes_sent != static_cast<ssize_t>(response.length())) {
+    if (bytes_sent != static_cast<ssize_t>(response.length()))
+    {
         std::cerr << "Failed to send full response" << std::endl;
     }
 }
@@ -1693,10 +1764,12 @@ std::string parseMultipartData(const std::string &data, std::string &filename)
     return data.substr(file_start_pos, file_end_boundary_pos - file_start_pos);
 }
 // 공통 파일 업로드 함수
-bool uploadFile(const std::string& content, const std::string& filename, const std::string& directory) {
+bool uploadFile(const std::string &content, const std::string &filename, const std::string &directory)
+{
     std::string filepath = directory + filename;
     std::ofstream outfile(filepath, std::ios::binary);
-    if (!outfile) {
+    if (!outfile)
+    {
         return false;
     }
     outfile.write(content.c_str(), content.size());
@@ -1704,50 +1777,65 @@ bool uploadFile(const std::string& content, const std::string& filename, const s
     return true;
 }
 // 이미지 업로드 핸들러
-void handleUploadImage(int client_socket, const std::string &request_body) {
+void handleUploadImage(int client_socket, const std::string &request_body)
+{
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
-    if (filename.empty() || file_content.empty()) {
+    if (filename.empty() || file_content.empty())
+    {
         send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
         return;
     }
 
-    if (uploadFile(file_content, filename, UPLOAD_IMAGE_DIR)) {
+    if (uploadFile(file_content, filename, UPLOAD_IMAGE_DIR))
+    {
         send_json_response2(client_socket, 200, "OK", {{"success", true}, {"url", "images/" + filename}});
-    } else {
+    }
+    else
+    {
         send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
     }
 }
 // OBJ 파일 업로드 핸들러
-void handleUploadObj(int client_socket, const std::string &request_body) {
+void handleUploadObj(int client_socket, const std::string &request_body)
+{
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
-    if (filename.empty() || file_content.empty()) {
+    if (filename.empty() || file_content.empty())
+    {
         send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
         return;
     }
 
-    if (uploadFile(file_content, filename, UPLOAD_OBJ_DIR)) {
+    if (uploadFile(file_content, filename, UPLOAD_OBJ_DIR))
+    {
         send_json_response2(client_socket, 200, "OK", {{"success", true}, {"url", "uploads/objs/" + filename}});
-    } else {
+    }
+    else
+    {
         send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
     }
 }
 // 일반 파일 업로드 핸들러
-void handleUploadFiles(int client_socket, const std::string &request_body) {
+void handleUploadFiles(int client_socket, const std::string &request_body)
+{
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
-    if (filename.empty() || file_content.empty()) {
+    if (filename.empty() || file_content.empty())
+    {
         send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
         return;
     }
 
-    if (uploadFile(file_content, filename, UPLOAD_ROOT_DIR)) {
+    if (uploadFile(file_content, filename, UPLOAD_ROOT_DIR))
+    {
         send_json_response2(client_socket, 200, "OK", {{"success", true}});
-    } else {
+    }
+    else
+    {
         send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
     }
 }
@@ -2044,7 +2132,8 @@ void send_json_response(int client_socket, int status_code, const std::string &s
         std::cerr << "Failed to send full response. Sent " << bytes_sent << " out of " << response_str.length() << " bytes." << std::endl;
     }
 }
-void handle_drive_contents(int client_socket, const std::string &query) {
+void handle_drive_contents(int client_socket, const std::string &query)
+{
     std::string path = "/";
     size_t path_pos = query.find("path=");
     if (path_pos != std::string::npos)
@@ -2216,12 +2305,15 @@ void handle_download_file(int client_socket, const std::string &query)
 
     file.close();
 }
-void handle_delete_item(int client_socket, const std::string& request_body) {
+void handle_delete_item(int client_socket, const std::string &request_body)
+{
     json response;
-    try {
+    try
+    {
         json request_data = json::parse(request_body);
-        
-        if (!request_data.contains("path") || !request_data.contains("name")) {
+
+        if (!request_data.contains("path") || !request_data.contains("name"))
+        {
             throw std::runtime_error("Missing 'path' or 'name' in request");
         }
 
@@ -2231,37 +2323,49 @@ void handle_delete_item(int client_socket, const std::string& request_body) {
         std::string full_path = root_path + path + name;
 
         // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
-        if (full_path.substr(0, root_path.length()) != root_path) {
+        if (full_path.substr(0, root_path.length()) != root_path)
+        {
             throw std::runtime_error("Access denied: Path is outside of allowed directory");
         }
 
-        if (fs::exists(full_path)) {
-            if (fs::is_directory(full_path)) {
+        if (fs::exists(full_path))
+        {
+            if (fs::is_directory(full_path))
+            {
                 fs::remove_all(full_path);
-            } else {
+            }
+            else
+            {
                 fs::remove(full_path);
             }
             response["success"] = true;
             response["message"] = "Item deleted successfully";
-        } else {
+        }
+        else
+        {
             response["success"] = false;
             response["message"] = "Item not found";
         }
 
         send_json_response2(client_socket, 200, "OK", response);
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         response["success"] = false;
         response["message"] = e.what();
         send_json_response2(client_socket, 400, "Bad Request", response);
     }
 }
-void handle_rename_item(int client_socket, const std::string& request_body) {
+void handle_rename_item(int client_socket, const std::string &request_body)
+{
     json response;
-    try {
+    try
+    {
         json request_data = json::parse(request_body);
-        
-        if (!request_data.contains("path") || !request_data.contains("oldName") || 
-            !request_data.contains("newName") || !request_data.contains("type")) {
+
+        if (!request_data.contains("path") || !request_data.contains("oldName") ||
+            !request_data.contains("newName") || !request_data.contains("type"))
+        {
             throw std::runtime_error("Missing required fields in request");
         }
 
@@ -2275,17 +2379,20 @@ void handle_rename_item(int client_socket, const std::string& request_body) {
 
         // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
         if (old_full_path.substr(0, root_path.length()) != root_path ||
-            new_full_path.substr(0, root_path.length()) != root_path) {
+            new_full_path.substr(0, root_path.length()) != root_path)
+        {
             throw std::runtime_error("Access denied: Path is outside of allowed directory");
         }
 
         // 파일/폴더 존재 여부 확인
-        if (!fs::exists(old_full_path)) {
+        if (!fs::exists(old_full_path))
+        {
             throw std::runtime_error("Item does not exist");
         }
 
         // 새 이름의 파일/폴더가 이미 존재하는지 확인
-        if (fs::exists(new_full_path)) {
+        if (fs::exists(new_full_path))
+        {
             throw std::runtime_error("An item with the new name already exists");
         }
 
@@ -2294,21 +2401,25 @@ void handle_rename_item(int client_socket, const std::string& request_body) {
 
         response["success"] = true;
         response["message"] = "Item renamed successfully";
-
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         response["success"] = false;
         response["message"] = e.what();
     }
 
-    send_json_response2(client_socket, response["success"] ? 200 : 400, 
+    send_json_response2(client_socket, response["success"] ? 200 : 400,
                         response["success"] ? "OK" : "Bad Request", response);
 }
-void handle_create_folder(int client_socket, const std::string& request_body) {
+void handle_create_folder(int client_socket, const std::string &request_body)
+{
     json response;
-    try {
+    try
+    {
         json request_data = json::parse(request_body);
-        
-        if (!request_data.contains("path") || !request_data.contains("name")) {
+
+        if (!request_data.contains("path") || !request_data.contains("name"))
+        {
             throw std::runtime_error("Missing required fields in request");
         }
 
@@ -2318,24 +2429,30 @@ void handle_create_folder(int client_socket, const std::string& request_body) {
         std::string full_path = root_path + path + folder_name;
 
         // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
-        if (full_path.substr(0, root_path.length()) != root_path) {
+        if (full_path.substr(0, root_path.length()) != root_path)
+        {
             throw std::runtime_error("Access denied: Path is outside of allowed directory");
         }
 
         // 폴더가 이미 존재하는지 확인
-        if (fs::exists(full_path)) {
+        if (fs::exists(full_path))
+        {
             throw std::runtime_error("A folder with this name already exists");
         }
 
         // 폴더 생성
-        if (fs::create_directory(full_path)) {
+        if (fs::create_directory(full_path))
+        {
             response["success"] = true;
             response["message"] = "Folder created successfully";
-        } else {
+        }
+        else
+        {
             throw std::runtime_error("Failed to create folder");
         }
-
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         response["success"] = false;
         response["message"] = e.what();
     }
@@ -2371,18 +2488,12 @@ std::unordered_map<std::string, std::function<void(int, const std::string &)>> p
     {"/delete-item", handle_delete_item},
     {"/rename-item", handle_rename_item},
     {"/create-folder", handle_create_folder},
-    // Add other POST routes here
 };
 std::unordered_map<std::string, std::function<void(int, const std::string &)>> static_routes = {
     {"/images", send_image},
     {"/assets/js", send_js},
     {"/assets/css", send_css},
     {"/uploads/objs", send_obj},
-    // {"/assets/html/generic.html", send_html},
-    // {"/assets/html/elements.html", send_html},
-    // {"/assets/html/starMap2.html", send_html},
-    // {"/assets/html/edit.html", send_html},
-    // {"/assets/html/index.html", send_html},
     {"/assets/html", send_html},
 };
 // 쿼리를 처리하는 함수의 타입 정의
@@ -2398,6 +2509,36 @@ void handle_request(int client_socket, const std::string &request)
     std::istringstream request_stream(request);
     std::string method, path, version;
     request_stream >> method >> path >> version;
+
+    std::unordered_map<std::string, std::string> headers;
+    std::string line;
+    
+    // Ignore the first line (request line)
+    std::getline(request_stream, line);
+
+    // Process header lines
+    while (std::getline(request_stream, line) && line != "\r")
+    {
+        size_t pos = line.find(": ");
+        if (pos != std::string::npos)
+        {
+            std::string key = line.substr(0, pos);
+            std::string value = line.substr(pos + 2, line.size() - pos - 3); // -3 to remove \r at the end
+            headers[key] = value;
+        }
+    }
+
+    // Check for CSRF token in POST requests
+    if (method == "POST")
+    {
+        if (headers["X-Requested-With"] != "XMLHttpRequest")
+        {
+            std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nCSRF validation failed";
+            send(client_socket, response.c_str(), response.length(), 0);
+            return;
+        }
+    }
+
     std::string query;
     size_t query_pos = path.find("?");
     if (query_pos != std::string::npos)
@@ -2479,7 +2620,6 @@ void handle_request(int client_socket, const std::string &request)
         }
     }
 }
-
 void handle_client(int client_socket)
 {
     std::vector<char> buffer(BUFFER_SIZE);
@@ -2531,9 +2671,87 @@ void handle_client(int client_socket)
         }
     }
 
-    handle_request(client_socket, request);
+    try
+    {
+        handle_request(client_socket, request);
+    }
+    catch (const std::exception &e)
+    {
+        json response = {
+            {"success", false},
+            {"message", "Internal server error"}};
+        send_json_response2(client_socket, 500, "Internal Server Error", response);
+        std::cerr << "Error handling request: " << e.what() << std::endl;
+    }
+
     close(client_socket);
 }
+
+// void handle_client(int client_socket)
+// {
+//     std::vector<char> buffer(BUFFER_SIZE);
+//     std::string request;
+//     int bytes_received;
+
+//     while ((bytes_received = recv(client_socket, buffer.data(), buffer.size(), 0)) > 0)
+//     {
+//         request.append(buffer.data(), bytes_received);
+//         // Check if the full request has been received (i.e., we have received all the headers)
+//         if (request.find("\r\n\r\n") != std::string::npos)
+//         {
+//             break;
+//         }
+//     }
+
+//     if (bytes_received < 0)
+//     {
+//         perror("recv failed");
+//         close(client_socket);
+//         return;
+//     }
+
+//     // Extract Content-Length
+//     size_t content_length_pos = request.find("Content-Length:");
+//     if (content_length_pos != std::string::npos)
+//     {
+//         content_length_pos += 15; // Move past "Content-Length:"
+//         size_t end_pos = request.find("\r\n", content_length_pos);
+//         int content_length = std::stoi(request.substr(content_length_pos, end_pos - content_length_pos));
+
+//         // Read the body if it is not completely read yet
+//         size_t header_end_pos = request.find("\r\n\r\n");
+//         if (request.size() - (header_end_pos + 4) < content_length)
+//         {
+//             size_t bytes_remaining = content_length - (request.size() - (header_end_pos + 4));
+//             while (bytes_remaining > 0 && (bytes_received = recv(client_socket, buffer.data(), buffer.size(), 0)) > 0)
+//             {
+//                 request.append(buffer.data(), bytes_received);
+//                 bytes_remaining -= bytes_received;
+//             }
+
+//             if (bytes_received < 0)
+//             {
+//                 perror("recv failed");
+//                 close(client_socket);
+//                 return;
+//             }
+//         }
+//     }
+//     try
+//     {
+//         handle_request(client_socket, request);
+//     }
+//     catch (const std::exception &e)
+//     {
+//         json response = {
+//             {"success", false},
+//             {"message", "Internal server error"}};
+//         send_json_response2(client_socket, 500, "Internal Server Error", response);
+//         std::cerr << "Error handling request: " << e.what() << std::endl;
+//     }
+
+//     close(client_socket);
+// }
 
 void start_server()
 {

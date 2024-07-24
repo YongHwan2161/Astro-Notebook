@@ -4811,3 +4811,68 @@ body.is-mobile .banner>article {
     text-align: center;
     padding: 20px;
 }
+.comments-container {
+    max-width: 800px;
+    margin: 20px auto;
+    font-family: Arial, sans-serif;
+}
+
+.comment {
+    background-color: #f9f9f9;
+    border: 1px solid #e1e1e1;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+}
+
+.comment:hover {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.comment-author {
+    font-weight: bold;
+    color: #333;
+}
+
+.comment-timestamp {
+    font-size: 0.8em;
+    color: #777;
+}
+
+.comment-text {
+    line-height: 1.6;
+    color: #444;
+}
+
+.comment-actions {
+    margin-top: 10px;
+    text-align: right;
+}
+
+.comment-actions button {
+    background-color: #f0f0f0;
+    border: none;
+    padding: 5px 10px;
+    margin-left: 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: background-color 0.3s ease;
+}
+
+.comment-actions button:hover {
+    background-color: #e0e0e0;
+}
+
+.no-comments {
+    text-align: center;
+    color: #777;
+    font-style: italic;
+}
