@@ -4,7 +4,7 @@ import { render3DModel } from './modelRenderer.js';
 import { process3DModelData } from './modelProcessor.js';
 import { createProgressBar, removeProgressBar, fetchWithProgress } from './progressBar.js';
 
-let currentUser = null;
+let currentUser = null; 
 const Quill = window.Quill;
 
 export function initPosts(setCurrentUser) {
