@@ -319,7 +319,7 @@ std::unordered_map<std::string, std::string> parse_urlencoded(const std::string 
 // 데이터베이스 초기화 함수
 void init_database()
 {
-    int rc = sqlite3_open("users.db", &db);
+    int rc = sqlite3_open("users copy.db", &db);
     if (rc)
     {
         std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
