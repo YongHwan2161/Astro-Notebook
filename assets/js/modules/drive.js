@@ -125,21 +125,19 @@ export function toggleView() {
     }
 }
 export async function uploadFiles() {
-    const fileInput = document.getElementById('file-upload');
-    const files = fileInput.files;
-    if (files.length === 0) {
+    const files = getSelectedFiles();
+    if (!files.length) {
         alert('Please select files to upload.');
         return;
     }
 
-    const token = getToken();
-    if (!token) {
+    if (!isUserLoggedIn()) {
         alert('You must be logged in to upload files.');
         return;
     }
 
     const progressElement = createProgressElement();
-    const totalSize = Array.from(files).reduce((total, file) => total + file.size, 0);
+    const totalSize = calculateTotalSize(files);
     let uploadedSize = 0;
 
     try {
@@ -147,16 +145,54 @@ export async function uploadFiles() {
             await uploadFile(file, progressElement, totalSize, uploadedSize);
             uploadedSize += file.size;
         }
-        alert('All files uploaded successfully!');
+        handleUploadSuccess();
     } catch (error) {
-        console.error('Upload error:', error);
-        alert(`Error during upload: ${error.message}`);
+        handleUploadError(error);
     } finally {
-        removeProgressElement(progressElement);
-        loadDriveContent();
+        cleanupAfterUpload(progressElement);
     }
 }
+// export async function uploadFiles() {
+//     const fileInput = document.getElementById('file-upload');
+//     const files = fileInput.files;
+//     if (files.length === 0) {
+//         alert('Please select files to upload.');
+//         return;
+//     }
 
+//     const token = getToken();
+//     if (!token) {
+//         alert('You must be logged in to upload files.');
+//         return;
+//     }
+
+//     const progressElement = createProgressElement();
+//     const totalSize = Array.from(files).reduce((total, file) => total + file.size, 0);
+//     let uploadedSize = 0;
+
+//     try {
+//         for (const file of files) {
+//             await uploadFile(file, progressElement, totalSize, uploadedSize);
+//             uploadedSize += file.size;
+//         }
+//         alert('All files uploaded successfully!');
+//     } catch (error) {
+//         console.error('Upload error:', error);
+//         alert(`Error during upload: ${error.message}`);
+//     } finally {
+//         removeProgressElement(progressElement);
+//         loadDriveContent();
+//     }
+// }
+function getSelectedFiles() {
+    return document.getElementById('file-upload').files;
+}
+function isUserLoggedIn() {
+    return !!getToken();
+}
+function calculateTotalSize(files) {
+    return Array.from(files).reduce((total, file) => total + file.size, 0);
+}
 function createProgressElement() {
     const progressElement = document.createElement('div');
     progressElement.id = 'upload-progress';
@@ -193,12 +229,7 @@ async function uploadFile(file, progressElement, totalSize, uploadedSize) {
         headers: {
             'Authorization': `Bearer ${getToken()}`
         },
-        body: formData,
-        onUploadProgress: (progressEvent) => {
-            const fileProgress = progressEvent.loaded / progressEvent.total;
-            const overallProgress = (uploadedSize + progressEvent.loaded) / totalSize * 100;
-            updateProgress(progressElement, overallProgress);
-        }
+        body: formData
     });
 
     if (!response.ok) {
@@ -209,8 +240,13 @@ async function uploadFile(file, progressElement, totalSize, uploadedSize) {
     if (!data.success) {
         throw new Error(data.message || `Failed to upload ${file.name}`);
     }
+
+    updateProgress(progressElement, (uploadedSize + file.size) / totalSize * 100);
 }
 
+function updateProgress(progressElement, progress) {
+    progressElement.textContent = `Upload Progress: ${Math.round(progress)}%`;
+}
 // export async function uploadFiles() {
 //     // uploadFiles 함수 구현
 //     const fileInput = document.getElementById('file-upload');
@@ -261,7 +297,19 @@ async function uploadFile(file, progressElement, totalSize, uploadedSize) {
 //     // 드라이브 컨텐츠 새로고침
 //     loadDriveContent();
 // }
+function handleUploadSuccess() {
+    alert('All files uploaded successfully!');
+}
 
+function handleUploadError(error) {
+    console.error('Upload error:', error);
+    alert(`Error during upload: ${error.message}`);
+}
+
+function cleanupAfterUpload(progressElement) {
+    document.body.removeChild(progressElement);
+    loadDriveContent();
+}
 export function createFolder() {
     // createFolder 함수 구현
     const folderName = prompt('Enter folder name:');

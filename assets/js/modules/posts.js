@@ -4,9 +4,9 @@ import { render3DModel } from './modelRenderer.js';
 import { process3DModelData } from './modelProcessor.js';
 import { createProgressBar, removeProgressBar, fetchWithProgress } from './progressBar.js';
 
-let currentUser = null; 
+let currentUser = null;
 const Quill = window.Quill;
-
+let quill;
 export function initPosts(setCurrentUser) {
     // 게시글 관련 초기화 코드
     document.getElementById('comment-form').addEventListener('submit', submitComment);
@@ -135,7 +135,7 @@ export async function deletePost(id) {
         alert('Error: ' + error);
     }
 }
-let quill;
+
 export function EditPost() {
 
     // EditPost 함수 구현
@@ -171,6 +171,8 @@ export function EditPost() {
         },
         theme: 'snow'
     });
+    // 전역 quill 변수에 할당 (window 객체를 통해)
+    //window.quill = quill;
 }
 export async function savePost() {
     if (!isEditorInitialized()) return;
@@ -184,7 +186,143 @@ export async function savePost() {
         handlePostSaveError(error);
     }
 }
+// 3D 모델 삽입 관련 함수들
+export function select3DFile() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.obj,.mtl,.png,.jpg,.jpeg';
+    input.onchange = function (event) {
+        var files = event.target.files;
+        if (files.length > 0) {
+            load3DModel(files);
+        }
+    };
+    input.click();
+}
 
+export async function load3DModel(files) {
+    // index4.html의 load3DModel 함수 내용을 여기로 옮깁니다.
+    // quill 객체 사용 시 window.quill로 접근합니다.
+    let objFile, mtlFile, textureFiles = [];
+    for (let file of files) {
+        if (file.name.endsWith('.obj')) objFile = file;
+        else if (file.name.endsWith('.mtl')) mtlFile = file;
+        else if (/\.(png|jpg|jpeg)$/i.test(file.name)) textureFiles.push(file);
+    }
+
+    if (!objFile) {
+        alert('OBJ file is required.');
+        return;
+    }
+
+    try {
+        // quill 객체가 초기화되었는지 확인
+        if (!quill) {
+            throw new Error('Quill editor is not initialized');
+        }
+
+        const objContent = await readFile(objFile);
+        let mtlContent = null;
+        let textureContents = [];
+
+        if (mtlFile) {
+            mtlContent = await readFile(mtlFile);
+        }
+
+        for (let textureFile of textureFiles) {
+            const textureContent = await readFile(textureFile, 'dataURL');
+            textureContents.push({
+                name: textureFile.name,
+                content: textureContent
+            });
+        }
+
+        // Create a container for the canvas
+        var canvasContainer = document.createElement('div');
+        canvasContainer.style.width = '100%';
+        canvasContainer.style.height = '400px';
+        canvasContainer.style.position = 'relative';
+        canvasContainer.style.background = '#f0f0f0';
+        canvasContainer.style.marginTop = '10px';
+
+        // Set attributes for OBJ file
+        canvasContainer.setAttribute('data-obj-file', objContent);
+        canvasContainer.setAttribute('data-obj-filename', objFile.name);
+
+        // Set attributes for MTL file if exists
+        if (mtlContent) {
+            canvasContainer.setAttribute('data-mtl-file', mtlContent);
+            canvasContainer.setAttribute('data-mtl-filename', mtlFile.name);
+        }
+
+        // Set attributes for texture files
+        if (textureContents.length > 0) {
+            canvasContainer.setAttribute('data-texture-files', JSON.stringify(textureContents));
+        }
+
+        // Create a canvas element to render the 3D model
+        var canvas = document.createElement('canvas');
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvasContainer.appendChild(canvas);
+
+        // Create a block blot for the canvas container
+        var Block = Quill.import('blots/block/embed');
+        class CanvasBlot extends Block {
+            static create(value) {
+                let node = super.create();
+                Object.keys(value).forEach(key => {
+                    if (key === 'style') {
+                        node.setAttribute('style', value[key]);
+                    } else if (key === 'data-texture-files') {
+                        node.setAttribute(key, JSON.stringify(value[key]));
+                    } else {
+                        node.setAttribute(key, value[key]);
+                    }
+                });
+                node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
+                return node;
+            }
+            static value(node) {
+                const attrs = node.attributes;
+                const value = {};
+                for (let i = 0; i < attrs.length; i++) {
+                    if (attrs[i].name === 'data-texture-files') {
+                        value[attrs[i].name] = JSON.parse(attrs[i].value);
+                    } else {
+                        value[attrs[i].name] = attrs[i].value;
+                    }
+                }
+                return value;
+            }
+        }
+        CanvasBlot.blotName = 'canvas';
+        CanvasBlot.tagName = 'div';
+        Quill.register(CanvasBlot);
+
+        // Insert the canvas container as a block blot
+        var range = quill.getSelection(true);
+        quill.insertEmbed(range.index, 'canvas', {
+            style: canvasContainer.getAttribute('style'),
+            'data-obj-file': objContent,
+            'data-obj-filename': objFile.name,
+            'data-mtl-file': mtlContent || '',
+            'data-mtl-filename': mtlFile ? mtlFile.name : '',
+            'data-texture-files': textureContents
+        });
+
+        // 3D 모델 렌더링
+        setTimeout(() => {
+            var canvasElements = document.querySelectorAll('canvas');
+            var lastCanvas = canvasElements[canvasElements.length - 1];
+            render3DModel(lastCanvas, objContent, mtlContent, textureContents, false);
+        }, 100);
+    } catch (error) {
+        console.error('Error processing files:', error);
+        alert('Failed to process files: ' + error.message);
+    }
+}
 function isEditorInitialized() {
     if (!quill) {
         alert('Editor is not initialized.');
@@ -207,7 +345,7 @@ async function preparePostData() {
     const title = getPostTitle();
     let content = quill.root.innerHTML;
     content = await process3DModelData(content);
-    
+
     return {
         title,
         content,
@@ -250,90 +388,6 @@ function handlePostSaveError(error) {
     console.error('Error:', error);
     alert('Error: ' + error.message);
 }
-
-// export async function savePost() {
-//     if (!quill) {
-//         alert('Editor is not initialized.');
-//         return;
-//     }
-
-//     const token = getToken();
-//     if (!token) {
-//         alert('You must be logged in to save a post');
-//         return;
-//     }
-
-//     try {
-//         const username = await verifyToken(token);
-//         const title = document.getElementById('name').value;
-//         if (title === "") {
-//             alert('제목을 입력해 주세요.');
-//             return;
-//         }
-
-//         let content = quill.root.innerHTML;
-//         const author = username;
-//         const timestamp = new Date().toISOString();
-
-//         // 3D 모델 데이터 처리
-//         content = await process3DModelData(content);
-
-//         const postData = { title, content, author, timestamp };
-
-//         // 프로그레스 표시 시작
-//         const progressBar = createProgressBar();
-
-//         // 프로그레스 바를 업데이트하는 커스텀 fetch 함수
-//         // const fetchWithProgress = async (url, options) => {
-//         //     const xhr = new XMLHttpRequest();
-//         //     xhr.open(options.method || 'GET', url);
-
-//         //     for (const header in options.headers) {
-//         //         xhr.setRequestHeader(header, options.headers[header]);
-//         //     }
-
-//         //     xhr.upload.onprogress = (event) => {
-//         //         if (event.lengthComputable) {
-//         //             const percentComplete = (event.loaded / event.total) * 100;
-//         //             progressBar.update(Math.round(percentComplete));
-//         //         }
-//         //     };
-
-//         //     return new Promise((resolve, reject) => {
-//         //         xhr.onload = () => {
-//         //             if (xhr.status >= 200 && xhr.status < 300) {
-//         //                 resolve(xhr.response);
-//         //             } else {
-//         //                 reject(xhr.statusText);
-//         //             }
-//         //         };
-//         //         xhr.onerror = () => reject(xhr.statusText);
-//         //         xhr.send(options.body);
-//         //     });
-//         // };
-
-//         const response = await fetchWithProgress('/save_post', {
-//             method: 'POST',
-//             headers: { 'Content-Type': 'application/json' },
-//             body: JSON.stringify(postData)
-//         });
-
-//         // 프로그레스 표시 종료
-//         removeProgressBar(progressBar);
-
-//         const data = JSON.parse(response);
-
-//         if (data.success) {
-//             alert('Post saved successfully!');
-//             loadPosts();
-//         } else {
-//             throw new Error(data.message || 'Failed to save post.');
-//         }
-//     } catch (error) {
-//         console.error('Error:', error);
-//         alert('Error: ' + error.message);
-//     }
-// }
 
 export function loadComments(postId) {
     // loadComments 함수 구현

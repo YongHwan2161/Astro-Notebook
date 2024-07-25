@@ -11,9 +11,9 @@ export function initModelRenderer() {
 }
 export function render3DModel(canvas, objData, mtlData, textureData, isUrl = false) {
     console.log('Render3DModel called with:', {
-        objData: objData ? objData.substring(0, 100) + '...' : 'None',
-        mtlData: mtlData ? mtlData.substring(0, 100) + '...' : 'None',
-        textureData: textureData,
+        objData: objData ? (isUrl ? objData : objData.substring(0, 100) + '...') : 'None',
+        mtlData: mtlData ? (isUrl ? mtlData : mtlData.substring(0, 100) + '...') : 'None',
+        textureData: isUrl ? textureData : textureData.map(t => t.name),
         isUrl: isUrl
     });
 
@@ -129,21 +129,28 @@ function loadObj(loader, objData, isUrl) {
         }
     });
 }
-
 async function applyTextures(object, textureData, isUrl) {
     const textureLoader = new THREE.TextureLoader();
-    const loadTexture = (textureUrl) => new Promise((resolve, reject) => {
-        textureLoader.load(textureUrl, resolve, undefined, reject);
+    const loadTexture = (textureUrl, textureName) => new Promise((resolve) => {
+        textureLoader.load(
+            textureUrl,
+            (texture) => resolve({ name: textureName, texture: texture }),
+            undefined,
+            (error) => {
+                console.error(`Failed to load texture ${textureName}:`, error);
+                resolve({ name: textureName, texture: null });
+            }
+        );
     });
 
-    const textures = await Promise.all(textureData.map(async texture => {
+    const textures = await Promise.all(textureData.map(async (texture) => {
+        const textureName = isUrl ? texture : texture.name;
         const textureUrl = isUrl ? texture : texture.content;
         try {
-            const loadedTexture = await loadTexture(textureUrl);
-            return { name: texture.name, texture: loadedTexture };
+            return await loadTexture(textureUrl, textureName);
         } catch (error) {
-            console.error(`Failed to load texture ${texture.name}:`, error);
-            return { name: texture.name, texture: null };
+            console.error(`Error processing texture ${textureName}:`, error);
+            return { name: textureName, texture: null };
         }
     }));
 
@@ -168,7 +175,48 @@ function applyTextureToMaterial(material, tex) {
     } else if (textureName.includes('specular')) {
         material.specularMap = tex.texture;
     }
+    // 텍스처가 적용되었음을 로그로 남깁니다.
+    console.log(`Applied texture ${tex.name} to material`);
 }
+// async function applyTextures(object, textureData, isUrl) {
+//     const textureLoader = new THREE.TextureLoader();
+//     const loadTexture = (textureUrl) => new Promise((resolve, reject) => {
+//         textureLoader.load(textureUrl, resolve, undefined, reject);
+//     });
+
+//     const textures = await Promise.all(textureData.map(async texture => {
+//         const textureUrl = isUrl ? texture : texture.content;
+//         try {
+//             const loadedTexture = await loadTexture(textureUrl);
+//             return { name: texture.name, texture: loadedTexture };
+//         } catch (error) {
+//             console.error(`Failed to load texture ${texture.name}:`, error);
+//             return { name: texture.name, texture: null };
+//         }
+//     }));
+
+//     object.traverse(child => {
+//         if (child instanceof THREE.Mesh) {
+//             textures.forEach(tex => {
+//                 if (tex.texture) {
+//                     applyTextureToMaterial(child.material, tex);
+//                 }
+//             });
+//             child.material.needsUpdate = true;
+//         }
+//     });
+// }
+
+// function applyTextureToMaterial(material, tex) {
+//     const textureName = tex.name.toLowerCase();
+//     if (textureName.includes('diffuse') || textureName.includes('color')) {
+//         material.map = tex.texture;
+//     } else if (textureName.includes('bump') || textureName.includes('normal')) {
+//         material.normalMap = tex.texture;
+//     } else if (textureName.includes('specular')) {
+//         material.specularMap = tex.texture;
+//     }
+// }
 
 function addObjectToScene(scene, object) {
     scene.add(object);

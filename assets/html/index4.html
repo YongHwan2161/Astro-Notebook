@@ -450,7 +450,7 @@
 
         let isUsernameAvailable = false;
         document.getElementById('signupButton').disabled = true;
-       function fetchUserCount() {
+        function fetchUserCount() {
             fetch('/usercount')
                 .then(response => response.json())
                 .then(data => {
@@ -506,7 +506,7 @@
                     alert('Error: ' + error);
                 });
         }
-        var quill;
+        //let quill;
 
         function readFile(file, readAs = 'text') {
             return new Promise((resolve, reject) => {
@@ -520,134 +520,139 @@
                 }
             });
         }
-        function select3DFile() {
-            var input = document.createElement('input');
-            input.type = 'file';
-            input.multiple = true;
-            input.accept = '.obj,.mtl,.png,.jpg,.jpeg';
-            input.onchange = function (event) {
-                var files = event.target.files;
-                if (files.length > 0) {
-                    load3DModel(files);
-                }
-            };
-            input.click();
-        }
-        async function load3DModel(files) {
-            let objFile, mtlFile, textureFiles = [];
-            for (let file of files) {
-                if (file.name.endsWith('.obj')) objFile = file;
-                else if (file.name.endsWith('.mtl')) mtlFile = file;
-                else if (/\.(png|jpg|jpeg)$/i.test(file.name)) textureFiles.push(file);
-            }
+        // function select3DFile() {
+        //     var input = document.createElement('input');
+        //     input.type = 'file';
+        //     input.multiple = true;
+        //     input.accept = '.obj,.mtl,.png,.jpg,.jpeg';
+        //     input.onchange = function (event) {
+        //         var files = event.target.files;
+        //         if (files.length > 0) {
+        //             load3DModel(files);
+        //         }
+        //     };
+        //     input.click();
+        // }
+        // async function load3DModel(files) {
+        //     let objFile, mtlFile, textureFiles = [];
+        //     for (let file of files) {
+        //         if (file.name.endsWith('.obj')) objFile = file;
+        //         else if (file.name.endsWith('.mtl')) mtlFile = file;
+        //         else if (/\.(png|jpg|jpeg)$/i.test(file.name)) textureFiles.push(file);
+        //     }
 
-            if (!objFile) {
-                alert('OBJ file is required.');
-                return;
-            }
+        //     if (!objFile) {
+        //         alert('OBJ file is required.');
+        //         return;
+        //     }
 
-            try {
-                const objContent = await readFile(objFile);
-                let mtlContent = null;
-                let textureContents = [];
+        //     try {
+        //         // quill 객체가 초기화되었는지 확인
+        //         if (!quill) {
+        //             throw new Error('Quill editor is not initialized');
+        //         }
 
-                if (mtlFile) {
-                    mtlContent = await readFile(mtlFile);
-                }
+        //         const objContent = await readFile(objFile);
+        //         let mtlContent = null;
+        //         let textureContents = [];
 
-                for (let textureFile of textureFiles) {
-                    const textureContent = await readFile(textureFile, 'dataURL');
-                    textureContents.push({
-                        name: textureFile.name,
-                        content: textureContent
-                    });
-                }
+        //         if (mtlFile) {
+        //             mtlContent = await readFile(mtlFile);
+        //         }
 
-                // Create a container for the canvas
-                var canvasContainer = document.createElement('div');
-                canvasContainer.style.width = '100%';
-                canvasContainer.style.height = '400px';
-                canvasContainer.style.position = 'relative';
-                canvasContainer.style.background = '#f0f0f0';
-                canvasContainer.style.marginTop = '10px';
+        //         for (let textureFile of textureFiles) {
+        //             const textureContent = await readFile(textureFile, 'dataURL');
+        //             textureContents.push({
+        //                 name: textureFile.name,
+        //                 content: textureContent
+        //             });
+        //         }
 
-                // Set attributes for OBJ file
-                canvasContainer.setAttribute('data-obj-file', objContent);
-                canvasContainer.setAttribute('data-obj-filename', objFile.name);
+        //         // Create a container for the canvas
+        //         var canvasContainer = document.createElement('div');
+        //         canvasContainer.style.width = '100%';
+        //         canvasContainer.style.height = '400px';
+        //         canvasContainer.style.position = 'relative';
+        //         canvasContainer.style.background = '#f0f0f0';
+        //         canvasContainer.style.marginTop = '10px';
 
-                // Set attributes for MTL file if exists
-                if (mtlContent) {
-                    canvasContainer.setAttribute('data-mtl-file', mtlContent);
-                    canvasContainer.setAttribute('data-mtl-filename', mtlFile.name);
-                }
+        //         // Set attributes for OBJ file
+        //         canvasContainer.setAttribute('data-obj-file', objContent);
+        //         canvasContainer.setAttribute('data-obj-filename', objFile.name);
 
-                // Set attributes for texture files
-                if (textureContents.length > 0) {
-                    canvasContainer.setAttribute('data-texture-files', JSON.stringify(textureContents));
-                }
+        //         // Set attributes for MTL file if exists
+        //         if (mtlContent) {
+        //             canvasContainer.setAttribute('data-mtl-file', mtlContent);
+        //             canvasContainer.setAttribute('data-mtl-filename', mtlFile.name);
+        //         }
 
-                // Create a canvas element to render the 3D model
-                var canvas = document.createElement('canvas');
-                canvas.style.width = '100%';
-                canvas.style.height = '100%';
-                canvasContainer.appendChild(canvas);
+        //         // Set attributes for texture files
+        //         if (textureContents.length > 0) {
+        //             canvasContainer.setAttribute('data-texture-files', JSON.stringify(textureContents));
+        //         }
 
-                // Create a block blot for the canvas container
-                var Block = Quill.import('blots/block/embed');
-                class CanvasBlot extends Block {
-                    static create(value) {
-                        let node = super.create();
-                        Object.keys(value).forEach(key => {
-                            if (key === 'style') {
-                                node.setAttribute('style', value[key]);
-                            } else if (key === 'data-texture-files') {
-                                node.setAttribute(key, JSON.stringify(value[key]));
-                            } else {
-                                node.setAttribute(key, value[key]);
-                            }
-                        });
-                        node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
-                        return node;
-                    }
-                    static value(node) {
-                        const attrs = node.attributes;
-                        const value = {};
-                        for (let i = 0; i < attrs.length; i++) {
-                            if (attrs[i].name === 'data-texture-files') {
-                                value[attrs[i].name] = JSON.parse(attrs[i].value);
-                            } else {
-                                value[attrs[i].name] = attrs[i].value;
-                            }
-                        }
-                        return value;
-                    }
-                }
-                CanvasBlot.blotName = 'canvas';
-                CanvasBlot.tagName = 'div';
-                Quill.register(CanvasBlot);
+        //         // Create a canvas element to render the 3D model
+        //         var canvas = document.createElement('canvas');
+        //         canvas.style.width = '100%';
+        //         canvas.style.height = '100%';
+        //         canvasContainer.appendChild(canvas);
 
-                // Insert the canvas container as a block blot
-                var range = quill.getSelection(true);
-                quill.insertEmbed(range.index, 'canvas', {
-                    style: canvasContainer.getAttribute('style'),
-                    'data-obj-file': objContent,
-                    'data-obj-filename': objFile.name,
-                    'data-mtl-file': mtlContent || '',
-                    'data-mtl-filename': mtlFile ? mtlFile.name : '',
-                    'data-texture-files': textureContents
-                });
+        //         // Create a block blot for the canvas container
+        //         var Block = Quill.import('blots/block/embed');
+        //         class CanvasBlot extends Block {
+        //             static create(value) {
+        //                 let node = super.create();
+        //                 Object.keys(value).forEach(key => {
+        //                     if (key === 'style') {
+        //                         node.setAttribute('style', value[key]);
+        //                     } else if (key === 'data-texture-files') {
+        //                         node.setAttribute(key, JSON.stringify(value[key]));
+        //                     } else {
+        //                         node.setAttribute(key, value[key]);
+        //                     }
+        //                 });
+        //                 node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
+        //                 return node;
+        //             }
+        //             static value(node) {
+        //                 const attrs = node.attributes;
+        //                 const value = {};
+        //                 for (let i = 0; i < attrs.length; i++) {
+        //                     if (attrs[i].name === 'data-texture-files') {
+        //                         value[attrs[i].name] = JSON.parse(attrs[i].value);
+        //                     } else {
+        //                         value[attrs[i].name] = attrs[i].value;
+        //                     }
+        //                 }
+        //                 return value;
+        //             }
+        //         }
+        //         CanvasBlot.blotName = 'canvas';
+        //         CanvasBlot.tagName = 'div';
+        //         Quill.register(CanvasBlot);
 
-                // 3D 모델 렌더링
-                setTimeout(() => {
-                    var canvasElements = document.querySelectorAll('canvas');
-                    var lastCanvas = canvasElements[canvasElements.length - 1];
-                    render3DModel(lastCanvas, objContent, mtlContent, textureContents, false);
-                }, 100);
-            } catch (error) {
-                console.error('Error processing files:', error);
-                alert('Failed to process files: ' + error.message);
-            }
-        }
+        //         // Insert the canvas container as a block blot
+        //         var range = quill.getSelection(true);
+        //         quill.insertEmbed(range.index, 'canvas', {
+        //             style: canvasContainer.getAttribute('style'),
+        //             'data-obj-file': objContent,
+        //             'data-obj-filename': objFile.name,
+        //             'data-mtl-file': mtlContent || '',
+        //             'data-mtl-filename': mtlFile ? mtlFile.name : '',
+        //             'data-texture-files': textureContents
+        //         });
+
+        //         // 3D 모델 렌더링
+        //         setTimeout(() => {
+        //             var canvasElements = document.querySelectorAll('canvas');
+        //             var lastCanvas = canvasElements[canvasElements.length - 1];
+        //             render3DModel(lastCanvas, objContent, mtlContent, textureContents, false);
+        //         }, 100);
+        //     } catch (error) {
+        //         console.error('Error processing files:', error);
+        //         alert('Failed to process files: ' + error.message);
+        //     }
+        // }
 
         async function uploadObjFile(file) {
             //alert('call uploadObjFile');
