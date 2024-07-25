@@ -1,7 +1,8 @@
 // drive.js
+import { getToken } from './utils.js';
 
-let currentPath = '/';
-let isGridView = true;
+let currentPath = '';
+let isGridView = false;
 
 export function initDrive() {
     // 초기화 코드
@@ -25,7 +26,7 @@ export function loadDriveContent() {
             currentPathElement.textContent = `Current Path: ${currentPath}`;
             driveContent.innerHTML = '';
 
-            if (currentPath !== '/') {
+            if (currentPath !== '') {
                 const backItem = createDriveItem('..', 'folder', true);
                 driveContent.appendChild(backItem);
             }
@@ -46,45 +47,6 @@ export function loadDriveContent() {
         });
 
 }
-// export function loadDriveContent() {
-//     // loadDriveContent 함수 구현
-//     const driveContent = document.getElementById('drive-content');
-//     const currentPathElement = document.getElementById('current-path');
-
-//     // 로딩 인디케이터 표시
-//     driveContent.innerHTML = '<div class="loading">Loading...</div>';
-
-//     fetch(`/drive-contents?path=${encodeURIComponent(currentPath)}`)
-//         .then(response => response.json())
-//         .then(data => {
-//             if (data.error) {
-//                 throw new Error(data.error);
-//             }
-
-//             currentPathElement.textContent = `Current Path: ${currentPath}`;
-//             driveContent.innerHTML = '';
-
-//             if (currentPath !== '/') {
-//                 const backItem = createDriveItem('..', 'folder', true);
-//                 driveContent.appendChild(backItem);
-//             }
-
-//             if (Array.isArray(data.contents)) {
-//                 data.contents.forEach(item => {
-//                     const driveItem = createDriveItem(item.name, item.type);
-//                     driveContent.appendChild(driveItem);
-//                 });
-//             } else {
-//                 console.warn('Unexpected data format:', data);
-//                 driveContent.innerHTML = '<div class="error">Unexpected data format</div>';
-//             }
-//         })
-//         .catch(error => {
-//             console.error('Error fetching drive contents:', error);
-//             driveContent.innerHTML = `<div class="error">Error: ${error.message}</div>`;
-//         });
-// }
-
 export function createDriveItem(name, type, isBackButton = false) {
     // createDriveItem 함수 구현
     const item = document.createElement('div');
@@ -162,57 +124,143 @@ export function toggleView() {
         }
     }
 }
-
 export async function uploadFiles() {
-    // uploadFiles 함수 구현
     const fileInput = document.getElementById('file-upload');
     const files = fileInput.files;
-    const totalFiles = files.length;
-    let uploadedFiles = 0;
+    if (files.length === 0) {
+        alert('Please select files to upload.');
+        return;
+    }
 
-    // 진행 상황을 표시할 요소 생성
+    const token = getToken();
+    if (!token) {
+        alert('You must be logged in to upload files.');
+        return;
+    }
+
+    const progressElement = createProgressElement();
+    const totalSize = Array.from(files).reduce((total, file) => total + file.size, 0);
+    let uploadedSize = 0;
+
+    try {
+        for (const file of files) {
+            await uploadFile(file, progressElement, totalSize, uploadedSize);
+            uploadedSize += file.size;
+        }
+        alert('All files uploaded successfully!');
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert(`Error during upload: ${error.message}`);
+    } finally {
+        removeProgressElement(progressElement);
+        loadDriveContent();
+    }
+}
+
+function createProgressElement() {
     const progressElement = document.createElement('div');
     progressElement.id = 'upload-progress';
+    progressElement.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: white;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        z-index: 1000;
+    `;
     document.body.appendChild(progressElement);
-
-    for (let i = 0; i < files.length; i++) {
-        const formData = new FormData();
-        formData.append('file', files[i]);
-        formData.append('path', currentPath);
-
-        try {
-            const response = await fetch('/upload-file', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                uploadedFiles++;
-                // 진행 상황 업데이트
-                progressElement.textContent = `Uploading: ${uploadedFiles}/${totalFiles}`;
-            } else {
-                console.error(`Failed to upload file: ${files[i].name}`);
-            }
-        } catch (error) {
-            console.error('Error uploading file:', error);
-        }
-    }
-
-    // 업로드 완료 후 처리
-    if (uploadedFiles === totalFiles) {
-        alert('All files uploaded successfully!');
-    } else {
-        alert(`Uploaded ${uploadedFiles} out of ${totalFiles} files.`);
-    }
-
-    // 진행 상황 표시 요소 제거
-    document.body.removeChild(progressElement);
-
-    // 드라이브 컨텐츠 새로고침
-    loadDriveContent();
+    return progressElement;
 }
+
+function removeProgressElement(progressElement) {
+    document.body.removeChild(progressElement);
+}
+
+function updateProgress(progressElement, progress) {
+    progressElement.textContent = `Upload Progress: ${Math.round(progress)}%`;
+}
+
+async function uploadFile(file, progressElement, totalSize, uploadedSize) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', currentPath);
+
+    const response = await fetch('/upload_file', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        },
+        body: formData,
+        onUploadProgress: (progressEvent) => {
+            const fileProgress = progressEvent.loaded / progressEvent.total;
+            const overallProgress = (uploadedSize + progressEvent.loaded) / totalSize * 100;
+            updateProgress(progressElement, overallProgress);
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to upload ${file.name}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.message || `Failed to upload ${file.name}`);
+    }
+}
+
+// export async function uploadFiles() {
+//     // uploadFiles 함수 구현
+//     const fileInput = document.getElementById('file-upload');
+//     const files = fileInput.files;
+//     const totalFiles = files.length;
+//     let uploadedFiles = 0;
+
+//     // 진행 상황을 표시할 요소 생성
+//     const progressElement = document.createElement('div');
+//     progressElement.id = 'upload-progress';
+//     document.body.appendChild(progressElement);
+
+//     for (let i = 0; i < files.length; i++) {
+//         const formData = new FormData();
+//         formData.append('file', files[i]);
+//         formData.append('path', currentPath);
+
+//         try {
+//             const response = await fetch('/upload-file', {
+//                 method: 'POST',
+//                 body: formData
+//             });
+
+//             const data = await response.json();
+
+//             if (data.success) {
+//                 uploadedFiles++;
+//                 // 진행 상황 업데이트
+//                 progressElement.textContent = `Uploading: ${uploadedFiles}/${totalFiles}`;
+//             } else {
+//                 console.error(`Failed to upload file: ${files[i].name}`);
+//             }
+//         } catch (error) {
+//             console.error('Error uploading file:', error);
+//         }
+//     }
+
+//     // 업로드 완료 후 처리
+//     if (uploadedFiles === totalFiles) {
+//         alert('All files uploaded successfully!');
+//     } else {
+//         alert(`Uploaded ${uploadedFiles} out of ${totalFiles} files.`);
+//     }
+
+//     // 진행 상황 표시 요소 제거
+//     document.body.removeChild(progressElement);
+
+//     // 드라이브 컨텐츠 새로고침
+//     loadDriveContent();
+// }
 
 export function createFolder() {
     // createFolder 함수 구현

@@ -173,90 +173,85 @@ export function EditPost() {
     });
 }
 export async function savePost() {
+    if (!isEditorInitialized()) return;
+    if (!isUserLoggedIn()) return;
+
+    try {
+        const postData = await preparePostData();
+        await uploadPost(postData);
+        handlePostSaveSuccess();
+    } catch (error) {
+        handlePostSaveError(error);
+    }
+}
+
+function isEditorInitialized() {
     if (!quill) {
         alert('Editor is not initialized.');
-        return;
+        return false;
     }
+    return true;
+}
 
+function isUserLoggedIn() {
     const token = getToken();
     if (!token) {
         alert('You must be logged in to save a post');
-        return;
+        return false;
     }
+    return true;
+}
 
+async function preparePostData() {
+    const username = await verifyToken(getToken());
+    const title = getPostTitle();
+    let content = quill.root.innerHTML;
+    content = await process3DModelData(content);
+    
+    return {
+        title,
+        content,
+        author: username,
+        timestamp: new Date().toISOString()
+    };
+}
+
+function getPostTitle() {
+    const title = document.getElementById('name').value;
+    if (title === "") {
+        throw new Error('Please enter a title.');
+    }
+    return title;
+}
+
+async function uploadPost(postData) {
+    const progressBar = createProgressBar();
     try {
-        const username = await verifyToken(token);
-        const title = document.getElementById('name').value;
-        if (title === "") {
-            alert('제목을 입력해 주세요.');
-            return;
-        }
-
-        let content = quill.root.innerHTML;
-        const author = username;
-        const timestamp = new Date().toISOString();
-
-        // 3D 모델 데이터 처리
-        content = await process3DModelData(content);
-
-        const postData = { title, content, author, timestamp };
-
-        // 프로그레스 표시 시작
-        const progressBar = createProgressBar();
-
-        // 프로그레스 바를 업데이트하는 커스텀 fetch 함수
-        // const fetchWithProgress = async (url, options) => {
-        //     const xhr = new XMLHttpRequest();
-        //     xhr.open(options.method || 'GET', url);
-
-        //     for (const header in options.headers) {
-        //         xhr.setRequestHeader(header, options.headers[header]);
-        //     }
-
-        //     xhr.upload.onprogress = (event) => {
-        //         if (event.lengthComputable) {
-        //             const percentComplete = (event.loaded / event.total) * 100;
-        //             progressBar.update(Math.round(percentComplete));
-        //         }
-        //     };
-
-        //     return new Promise((resolve, reject) => {
-        //         xhr.onload = () => {
-        //             if (xhr.status >= 200 && xhr.status < 300) {
-        //                 resolve(xhr.response);
-        //             } else {
-        //                 reject(xhr.statusText);
-        //             }
-        //         };
-        //         xhr.onerror = () => reject(xhr.statusText);
-        //         xhr.send(options.body);
-        //     });
-        // };
-
         const response = await fetchWithProgress('/save_post', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(postData)
         });
-
-        // 프로그레스 표시 종료
-        removeProgressBar(progressBar);
-
         const data = JSON.parse(response);
-
-        if (data.success) {
-            alert('Post saved successfully!');
-            loadPosts();
-        } else {
+        if (!data.success) {
             throw new Error(data.message || 'Failed to save post.');
         }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Error: ' + error.message);
+    } finally {
+        removeProgressBar(progressBar);
     }
 }
+
+function handlePostSaveSuccess() {
+    alert('Post saved successfully!');
+    loadPosts();
+}
+
+function handlePostSaveError(error) {
+    console.error('Error:', error);
+    alert('Error: ' + error.message);
+}
+
 // export async function savePost() {
-//     // savePost 함수 구현
 //     if (!quill) {
 //         alert('Editor is not initialized.');
 //         return;
@@ -280,69 +275,63 @@ export async function savePost() {
 //         const author = username;
 //         const timestamp = new Date().toISOString();
 
-//         // Parse the content to find 3D model data
-//         const parser = new DOMParser();
-//         const doc = parser.parseFromString(content, 'text/html');
-//         const model3dElements = doc.querySelectorAll('div[data-obj-file]');
+//         // 3D 모델 데이터 처리
+//         content = await process3DModelData(content);
 
-//         for (const element of model3dElements) {
-//             const objFile = element.getAttribute('data-obj-file');
-//             const objFilename = element.getAttribute('data-obj-filename');
-//             const mtlFile = element.getAttribute('data-mtl-file');
-//             const mtlFilename = element.getAttribute('data-mtl-filename');
-//             const textureFiles = JSON.parse(element.getAttribute('data-texture-files') || '[]');
+//         const postData = { title, content, author, timestamp };
 
-//             // Upload OBJ file
-//             const objUrl = await uploadFile(new Blob([objFile], { type: 'text/plain' }), objFilename);
-//             element.setAttribute('data-obj-url', objUrl);
-//             element.removeAttribute('data-obj-file');
+//         // 프로그레스 표시 시작
+//         const progressBar = createProgressBar();
 
-//             // Upload MTL file if exists
-//             if (mtlFile && mtlFilename) {
-//                 const mtlUrl = await uploadFile(new Blob([mtlFile], { type: 'text/plain' }), mtlFilename);
-//                 element.setAttribute('data-mtl-url', mtlUrl);
-//                 element.removeAttribute('data-mtl-file');
-//             }
+//         // 프로그레스 바를 업데이트하는 커스텀 fetch 함수
+//         // const fetchWithProgress = async (url, options) => {
+//         //     const xhr = new XMLHttpRequest();
+//         //     xhr.open(options.method || 'GET', url);
 
-//             // Upload texture files
-//             const uploadedTextures = await Promise.all(textureFiles.map(async (texture) => {
-//                 const textureBlob = dataURItoBlob(texture.content);
-//                 const textureUrl = await uploadFile(textureBlob, texture.name);
-//                 return { name: texture.name, url: textureUrl };
-//             }));
+//         //     for (const header in options.headers) {
+//         //         xhr.setRequestHeader(header, options.headers[header]);
+//         //     }
 
-//             element.setAttribute('data-texture-urls', JSON.stringify(uploadedTextures));
-//             element.removeAttribute('data-texture-files');
-//         }
+//         //     xhr.upload.onprogress = (event) => {
+//         //         if (event.lengthComputable) {
+//         //             const percentComplete = (event.loaded / event.total) * 100;
+//         //             progressBar.update(Math.round(percentComplete));
+//         //         }
+//         //     };
 
-//         content = doc.body.innerHTML;
+//         //     return new Promise((resolve, reject) => {
+//         //         xhr.onload = () => {
+//         //             if (xhr.status >= 200 && xhr.status < 300) {
+//         //                 resolve(xhr.response);
+//         //             } else {
+//         //                 reject(xhr.statusText);
+//         //             }
+//         //         };
+//         //         xhr.onerror = () => reject(xhr.statusText);
+//         //         xhr.send(options.body);
+//         //     });
+//         // };
 
-//         const postData = {
-//             title: title,
-//             content: content,
-//             author: author,
-//             timestamp: timestamp
-//         };
-
-//         const response = await fetch('/save_post', {
+//         const response = await fetchWithProgress('/save_post', {
 //             method: 'POST',
-//             headers: {
-//                 'Content-Type': 'application/json'
-//             },
+//             headers: { 'Content-Type': 'application/json' },
 //             body: JSON.stringify(postData)
 //         });
 
-//         const data = await response.json();
+//         // 프로그레스 표시 종료
+//         removeProgressBar(progressBar);
+
+//         const data = JSON.parse(response);
 
 //         if (data.success) {
 //             alert('Post saved successfully!');
 //             loadPosts();
 //         } else {
-//             alert('Failed to save post.');
+//             throw new Error(data.message || 'Failed to save post.');
 //         }
 //     } catch (error) {
 //         console.error('Error:', error);
-//         alert('Error: ' + error);
+//         alert('Error: ' + error.message);
 //     }
 // }
 

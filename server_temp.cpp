@@ -24,21 +24,17 @@
 #include <random>
 #include <filesystem>
 #include <nlohmann/json.hpp>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-const int PORT = 8443;
+const int PORT = 35500;
 const int BUFFER_SIZE = 2048;
-SSL *ssl;
-
 // 사용자 데이터를 저장할 간단한 해시맵
 std::unordered_map<std::string, std::string> user_data;
 // SQLite 데이터베이스 연결 객체
 sqlite3 *db;
-const std::string UPLOAD_DIR = "uploads";
+const std::string UPLOAD_DIR = "uploads/";
 const std::string UPLOAD_IMAGE_DIR = "images/";
 const std::string UPLOAD_OBJ_DIR = "uploads/objs/"; // .obj 파일을 저장할 디렉토리 경로
 const std::string UPLOAD_ROOT_DIR = "./";
@@ -252,12 +248,13 @@ std::string read_file(const std::string &file_path)
     buffer << file.rdbuf();
     return buffer.str();
 }
-void send_html(SSL *ssl, const std::string &file_path)
+void send_html(int client_socket, const std::string &file_path)
 {
     std::string html_content = read_file(file_path);
     if (html_content.empty())
     {
         std::cerr << "Failed to read " << file_path << std::endl;
+        // close(client_socket);
         return;
     }
 
@@ -268,9 +265,39 @@ void send_html(SSL *ssl, const std::string &file_path)
                                                                  "Connection: close\r\n\r\n" +
                            html_content;
 
-    SSL_write(ssl, response.c_str(), response.size());
+    // const char *response_ptr = response.c_str();
+    // size_t total_bytes_sent = 0;
+    // size_t response_size = response.size();
+    int sent_bytes = send(client_socket, response.c_str(), response.size(), 0);
+    if (sent_bytes < 0)
+    {
+        perror("send failed");
+    }
+    // while (total_bytes_sent < response_size)
+    // {
+    //     ssize_t sent_bytes = send(client_socket, response_ptr + total_bytes_sent, response_size - total_bytes_sent, 0);
+    //     if (sent_bytes < 0)
+    //     {
+    //         if (errno == EPIPE || errno == ECONNRESET)
+    //         {
+    //             // Broken pipe or connection reset by peer
+    //             perror("send failed");
+    //             std::cerr << "Error code: " << errno << ", Message: " << strerror(errno) << std::endl;
+    //             break;
+    //         }
+    //         perror("send failed");
+    //         std::cerr << "Error code: " << errno << ", Message: " << strerror(errno) << std::endl;
+    //     }
+    //     else
+    //     {
+    //         total_bytes_sent += sent_bytes;
+    //     }
+    // }
+
+    // shutdown(client_socket, SHUT_RDWR);
+    // close(client_socket);
 }
-void handle_websocket_connection(SSL *ssl, const std::string &client_key)
+void handle_websocket_connection(int client_socket, const std::string &client_key)
 {
     std::string accept_key = generate_websocket_accept_key(client_key);
     std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
@@ -278,7 +305,8 @@ void handle_websocket_connection(SSL *ssl, const std::string &client_key)
                            "Connection: Upgrade\r\n"
                            "Sec-WebSocket-Accept: " +
                            accept_key + "\r\n\r\n";
-    SSL_write(ssl, response.c_str(), response.length());
+    send(client_socket, response.c_str(), response.size(), 0);
+
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -290,13 +318,14 @@ void handle_websocket_connection(SSL *ssl, const std::string &client_key)
         ws_frame.push_back(message.size()); // No mask, payload length
 
         ws_frame.insert(ws_frame.end(), message.begin(), message.end());
-        int sent_bytes = SSL_write(ssl, ws_frame.data(), ws_frame.size());
+        int sent_bytes = send(client_socket, ws_frame.data(), ws_frame.size(), 0);
         if (sent_bytes < 0)
         {
             perror("send failed");
             break; // Exit the loop if sending fails
         }
     }
+    // close(client_socket);
 }
 // URL 인코딩된 데이터 파싱 함수
 std::unordered_map<std::string, std::string> parse_urlencoded(const std::string &body)
@@ -513,7 +542,7 @@ void init_database()
 //     }
 // }
 // 회원가입 요청을 처리하는 함수
-void handle_signup(SSL *ssl, const std::string &body)
+void handle_signup(int client_socket, const std::string &body)
 {
     auto params = parse_urlencoded(body);
     if (params.find("username") != params.end() && params.find("password") != params.end())
@@ -540,7 +569,7 @@ void handle_signup(SSL *ssl, const std::string &body)
                                        std::to_string(response_body.size()) + "\r\n"
                                                                               "Connection: close\r\n\r\n" +
                                        response_body;
-                SSL_write(ssl, response.c_str(), response.length());
+                send(client_socket, response.c_str(), response.size(), 0);
             }
             else
             {
@@ -551,7 +580,7 @@ void handle_signup(SSL *ssl, const std::string &body)
                                        std::to_string(response_body.size()) + "\r\n"
                                                                               "Connection: close\r\n\r\n" +
                                        response_body;
-                SSL_write(ssl, response.c_str(), response.length());
+                send(client_socket, response.c_str(), response.size(), 0);
             }
         }
         else
@@ -563,7 +592,7 @@ void handle_signup(SSL *ssl, const std::string &body)
                                    std::to_string(response_body.size()) + "\r\n"
                                                                           "Connection: close\r\n\r\n" +
                                    response_body;
-            SSL_write(ssl, response.c_str(), response.length());
+            send(client_socket, response.c_str(), response.size(), 0);
         }
         sqlite3_finalize(stmt);
     }
@@ -576,13 +605,12 @@ void handle_signup(SSL *ssl, const std::string &body)
                                std::to_string(response_body.size()) + "\r\n"
                                                                       "Connection: close\r\n\r\n" +
                                response_body;
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.size(), 0);
     }
     // close(client_socket);
 }
 // 비밀번호 해싱 함수
-std::string hash_password(const std::string &password, const std::string &salt)
-{
+std::string hash_password(const std::string& password, const std::string& salt) {
     std::string salted_password = salt + password;
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256_CTX sha256;
@@ -590,31 +618,27 @@ std::string hash_password(const std::string &password, const std::string &salt)
     SHA256_Update(&sha256, salted_password.c_str(), salted_password.length());
     SHA256_Final(hash, &sha256);
     std::stringstream ss;
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-    {
+    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
         ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
     }
     return ss.str();
 }
 // 사용자 정보를 데이터베이스에서 확인하는 함수
-bool verify_user(sqlite3 *db, const std::string &username, const std::string &password)
-{
+bool verify_user(sqlite3* db, const std::string &username, const std::string &password) {
     const char *sql_select = "SELECT PASSWORD, SALT FROM USERS WHERE USERNAME = ?;";
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db, sql_select, -1, &stmt, 0);
-    if (rc != SQLITE_OK)
-    {
+    if (rc != SQLITE_OK) {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         return false;
     }
     sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
     rc = sqlite3_step(stmt);
-    if (rc == SQLITE_ROW)
-    {
+    if (rc == SQLITE_ROW) {
         std::string stored_password = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
         std::string salt = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
         sqlite3_finalize(stmt);
-
+        
         std::string hashed_input = hash_password(password, salt);
         return stored_password == hashed_input;
     }
@@ -682,13 +706,15 @@ std::string create_jwt(const std::string &username, const std::string &secret_ke
     return header_base64 + "." + payload_base64 + "." + signature_base64;
 }
 // 로그인 요청을 처리하는 함수
-void handle_login(SSL *ssl, const std::string &body)
+void handle_login(int client_socket, const std::string &body)
 {
     json response;
     try
     {
+        // Parse JSON body
         json request_data = json::parse(body);
 
+        // Check for required fields
         if (!request_data.contains("username") || !request_data.contains("password"))
         {
             throw std::runtime_error("Missing username or password");
@@ -697,6 +723,7 @@ void handle_login(SSL *ssl, const std::string &body)
         std::string username = request_data["username"];
         std::string password = request_data["password"];
 
+        // Verify user credentials
         if (verify_user(db, username, password))
         {
             std::string token = create_jwt(username, SECRET_KEY);
@@ -716,6 +743,7 @@ void handle_login(SSL *ssl, const std::string &body)
         response["message"] = e.what();
     }
 
+    // Send response
     std::string response_body = response.dump();
     std::ostringstream response_stream;
     response_stream << "HTTP/1.1 200 OK\r\n"
@@ -727,8 +755,43 @@ void handle_login(SSL *ssl, const std::string &body)
                     << "\r\n"
                     << response_body;
 
-    SSL_write(ssl, response_stream.str().c_str(), response_stream.str().length());
+    send(client_socket, response_stream.str().c_str(), response_stream.str().length(), 0);
 }
+// void handle_login(int client_socket, const std::string &body)
+// {
+//     auto params = parse_urlencoded(body);
+//     if (params.find("username") != params.end() && params.find("password") != params.end())
+//     {
+//         std::string username = params["username"];
+//         std::string password = params["password"];
+//         std::ostringstream response;
+//         if (verify_user(username, password))
+//         {
+//             std::string token = create_jwt(username, SECRET_KEY);
+//             std::string response_body = "Login successful";
+//             response << "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+//                      << "{\"success\": true, \"token\": \"" << token << "\"}";
+//         }
+//         else
+//         {
+//             response << "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+//                      << "{\"success\": false}";
+//         }
+//         send(client_socket, response.str().c_str(), response.str().length(), 0);
+//     }
+//     else
+//     {
+//         std::string response_body = "Bad Request";
+//         std::string response = "HTTP/1.1 400 Bad Request\r\n"
+//                                "Content-Type: text/plain\r\n"
+//                                "Content-Length: " +
+//                                std::to_string(response_body.size()) + "\r\n"
+//                                                                       "Connection: close\r\n\r\n" +
+//                                response_body;
+//         send(client_socket, response.c_str(), response.size(), 0);
+//     }
+// }
+// 사용자 이름이 데이터베이스에 있는지 확인하는 함수
 bool is_username_taken(const std::string &username)
 {
     const char *sql_select = "SELECT COUNT(*) FROM USERS WHERE USERNAME = ?;";
@@ -754,7 +817,7 @@ bool is_username_taken(const std::string &username)
     return false;
 }
 // 아이디 중복 확인 요청을 처리하는 함수
-void handle_check_username(SSL *ssl, const std::string &body)
+void handle_check_username(int client_socket, const std::string &body)
 {
     auto params = parse_urlencoded(body);
     if (params.find("username") != params.end())
@@ -770,7 +833,7 @@ void handle_check_username(SSL *ssl, const std::string &body)
                                    std::to_string(response_body.size()) + "\r\n"
                                                                           "Connection: close\r\n\r\n" +
                                    response_body;
-            SSL_write(ssl, response.c_str(), response.length());
+            send(client_socket, response.c_str(), response.size(), 0);
         }
         else
         {
@@ -781,7 +844,7 @@ void handle_check_username(SSL *ssl, const std::string &body)
                                    std::to_string(response_body.size()) + "\r\n"
                                                                           "Connection: close\r\n\r\n" +
                                    response_body;
-            SSL_write(ssl, response.c_str(), response.length());
+            send(client_socket, response.c_str(), response.size(), 0);
         }
     }
     else
@@ -793,12 +856,12 @@ void handle_check_username(SSL *ssl, const std::string &body)
                                std::to_string(response_body.size()) + "\r\n"
                                                                       "Connection: close\r\n\r\n" +
                                response_body;
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.size(), 0);
     }
     // close(client_socket);
 }
 // 사용자 수를 데이터베이스에서 가져오는 함수
-void send_json_response2(SSL *ssl, int status_code, const std::string &status_message, const json &response_json)
+void send_json_response2(int client_socket, int status_code, const std::string &status_message, const json &response_json)
 {
     std::string json_str = response_json.dump();
     std::ostringstream response_stream;
@@ -809,7 +872,20 @@ void send_json_response2(SSL *ssl, int status_code, const std::string &status_me
     response_stream << json_str;
 
     std::string response = response_stream.str();
-    SSL_write(ssl, response.c_str(), response.length());
+
+    // 디버깅: 전송할 응답 출력
+    std::cout << "Sending response:\n"
+              << response << std::endl;
+
+    ssize_t bytes_sent = send(client_socket, response.c_str(), response.length(), 0);
+
+    // 디버깅: 전송된 바이트 수 확인
+    std::cout << "Bytes sent: " << bytes_sent << " out of " << response.length() << std::endl;
+
+    if (bytes_sent != static_cast<ssize_t>(response.length()))
+    {
+        std::cerr << "Failed to send full response" << std::endl;
+    }
 }
 // 사용자 수를 가져오는 함수
 std::pair<int, std::string> get_user_count()
@@ -841,7 +917,7 @@ std::pair<int, std::string> get_user_count()
     return {user_count, error_message};
 }
 // 사용자 수 요청을 처리하는 함수
-void handle_user_count_request(SSL *ssl)
+void handle_user_count_request(int client_socket)
 {
     json response_json;
     int status_code = 200;
@@ -868,10 +944,10 @@ void handle_user_count_request(SSL *ssl)
     // 디버깅: 생성된 JSON 출력
     std::cout << "Generated JSON: " << response_json.dump() << std::endl;
 
-    send_json_response2(ssl, status_code, status_message, response_json);
+    send_json_response2(client_socket, status_code, status_message, response_json);
 }
 // 파일 업로드 요청을 처리하는 함수
-void handle_file_upload(SSL *ssl, const std::string &boundary, int bytes_received)
+void handle_file_upload(int client_socket, const std::string &boundary, int bytes_received)
 {
     std::ofstream outfile;
     char buffer[BUFFER_SIZE];
@@ -917,11 +993,11 @@ void handle_file_upload(SSL *ssl, const std::string &boundary, int bytes_receive
                            "Content-Length: 7\r\n"
                            "Connection: close\r\n\r\n"
                            "Success";
-    SSL_write(ssl, response.c_str(), response.length());
+    send(client_socket, response.c_str(), response.size(), 0);
     // close(client_socket);
 }
 // 파일 다운로드 요청을 처리하는 함수
-void handle_file_download(SSL *ssl, const std::string &filename)
+void handle_file_download(int client_socket, const std::string &filename)
 {
     std::ifstream infile(UPLOAD_DIR + filename, std::ios::binary);
     if (!infile)
@@ -931,7 +1007,7 @@ void handle_file_download(SSL *ssl, const std::string &filename)
                                "Content-Length: 9\r\n"
                                "Connection: close\r\n\r\n"
                                "Not Found";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.size(), 0);
     }
     else
     {
@@ -946,20 +1022,21 @@ void handle_file_download(SSL *ssl, const std::string &filename)
                                                            "Content-Disposition: attachment; filename=\"" +
                                filename + "\"\r\n"
                                           "Connection: close\r\n\r\n";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.size(), 0);
 
         char buffer[BUFFER_SIZE];
         while (infile.read(buffer, BUFFER_SIZE))
         {
-            SSL_write(ssl, buffer, BUFFER_SIZE);
+            send(client_socket, buffer, BUFFER_SIZE, 0);
         }
-        SSL_write(ssl, buffer, infile.gcount());
+        send(client_socket, buffer, infile.gcount(), 0);
     }
 
     infile.close();
+    // close(client_socket);
 }
 // 파일 목록 요청을 처리하는 함수
-void handle_file_list_request(SSL *ssl)
+void handle_file_list_request(int client_socket)
 {
     DIR *dir;
     struct dirent *ent;
@@ -996,9 +1073,9 @@ void handle_file_list_request(SSL *ssl)
                            std::to_string(response_body.size()) + "\r\n"
                                                                   "Connection: close\r\n\r\n" +
                            response_body;
-    SSL_write(ssl, response.c_str(), response.length());
+    send(client_socket, response.c_str(), response.size(), 0);
 }
-void send_image(SSL *ssl, const std::string &file_path)
+void send_image(int client_socket, const std::string &file_path)
 {
     std::ifstream file(file_path, std::ios::binary);
     if (!file)
@@ -1008,7 +1085,7 @@ void send_image(SSL *ssl, const std::string &file_path)
                                          "Content-Length: 13\r\n"
                                          "Connection: close\r\n\r\n"
                                          "404 Not Found";
-        SSL_write(ssl, not_found_response.c_str(), not_found_response.length());
+        send(client_socket, not_found_response.c_str(), not_found_response.size(), 0);
         return;
     }
 
@@ -1021,12 +1098,12 @@ void send_image(SSL *ssl, const std::string &file_path)
                          "Content-Length: " +
                          std::to_string(file_content.size()) + "\r\n"
                                                                "Connection: close\r\n\r\n";
+    send(client_socket, header.c_str(), header.size(), 0);
+    send(client_socket, file_content.c_str(), file_content.size(), 0);
 
-    SSL_write(ssl, header.c_str(), header.length());
-    SSL_write(ssl, file_content.c_str(), file_content.length());
     file.close();
 }
-void send_js(SSL *ssl, const std::string &file_path)
+void send_js(int client_socket, const std::string &file_path)
 {
     std::ifstream file(file_path);
     if (!file)
@@ -1036,7 +1113,7 @@ void send_js(SSL *ssl, const std::string &file_path)
                                          "Content-Length: 13\r\n"
                                          "Connection: close\r\n\r\n"
                                          "404 Not Found";
-        SSL_write(ssl, not_found_response.c_str(), not_found_response.length());
+        send(client_socket, not_found_response.c_str(), not_found_response.size(), 0);
         return;
     }
 
@@ -1049,14 +1126,13 @@ void send_js(SSL *ssl, const std::string &file_path)
                          "Content-Length: " +
                          std::to_string(file_content.size()) + "\r\n"
                                                                "Connection: close\r\n\r\n";
-
-    SSL_write(ssl, header.c_str(), header.length());
-    SSL_write(ssl, file_content.c_str(), file_content.length());
+    send(client_socket, header.c_str(), header.size(), 0);
+    send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
     // close(client_socket);
 }
-void send_css(SSL *ssl, const std::string &file_path)
+void send_css(int client_socket, const std::string &file_path)
 {
     std::ifstream file(file_path);
     if (!file)
@@ -1066,7 +1142,7 @@ void send_css(SSL *ssl, const std::string &file_path)
                                          "Content-Length: 13\r\n"
                                          "Connection: close\r\n\r\n"
                                          "404 Not Found";
-        SSL_write(ssl, not_found_response.c_str(), not_found_response.length());
+        send(client_socket, not_found_response.c_str(), not_found_response.size(), 0);
         return;
     }
 
@@ -1079,13 +1155,13 @@ void send_css(SSL *ssl, const std::string &file_path)
                          "Content-Length: " +
                          std::to_string(file_content.size()) + "\r\n"
                                                                "Connection: close\r\n\r\n";
-    SSL_write(ssl, header.c_str(), header.length());
-    SSL_write(ssl, file_content.c_str(), file_content.length());
+    send(client_socket, header.c_str(), header.size(), 0);
+    send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
     // close(client_socket);
 }
-void send_font(SSL *ssl, const std::string &file_path, const std::string &content_type)
+void send_font(int client_socket, const std::string &file_path, const std::string &content_type)
 {
     std::ifstream file(file_path, std::ios::binary);
     if (!file)
@@ -1095,7 +1171,7 @@ void send_font(SSL *ssl, const std::string &file_path, const std::string &conten
                                          "Content-Length: 13\r\n"
                                          "Connection: close\r\n\r\n"
                                          "404 Not Found";
-        SSL_write(ssl, not_found_response.c_str(), not_found_response.length());
+        send(client_socket, not_found_response.c_str(), not_found_response.size(), 0);
         return;
     }
 
@@ -1109,8 +1185,8 @@ void send_font(SSL *ssl, const std::string &file_path, const std::string &conten
                                         "Content-Length: " +
                          std::to_string(file_content.size()) + "\r\n"
                                                                "Connection: close\r\n\r\n";
-    SSL_write(ssl, header.c_str(), header.length());
-    SSL_write(ssl, file_content.c_str(), file_content.length());
+    send(client_socket, header.c_str(), header.size(), 0);
+    send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
     // close(client_socket);
@@ -1131,7 +1207,7 @@ std::string get_font_content_type(const std::string &file_extension)
         return "font/woff2";
     return "application/octet-stream";
 }
-void send_obj(SSL *ssl, const std::string &file_path)
+void send_obj(int client_socket, const std::string &file_path)
 {
     std::ifstream file(file_path, std::ios::binary);
     if (!file)
@@ -1141,7 +1217,7 @@ void send_obj(SSL *ssl, const std::string &file_path)
                                          "Content-Length: 13\r\n"
                                          "Connection: close\r\n\r\n"
                                          "404 Not Found";
-        SSL_write(ssl, not_found_response.c_str(), not_found_response.length());
+        send(client_socket, not_found_response.c_str(), not_found_response.size(), 0);
         // close(client_socket);
         return;
     }
@@ -1155,8 +1231,8 @@ void send_obj(SSL *ssl, const std::string &file_path)
                          "Content-Length: " +
                          std::to_string(file_content.size()) + "\r\n"
                                                                "Connection: close\r\n\r\n";
-    SSL_write(ssl, header.c_str(), header.length());
-    SSL_write(ssl, file_content.c_str(), file_content.length());
+    send(client_socket, header.c_str(), header.size(), 0);
+    send(client_socket, file_content.c_str(), file_content.size(), 0);
 
     file.close();
     // close(client_socket);
@@ -1313,7 +1389,7 @@ std::unordered_map<std::string, std::string> parse_query_params(const std::strin
     }
     return params;
 }
-void handle_verify_token(SSL *ssl, const std::string &body)
+void handle_verify_token(int client_socket, const std::string &body)
 {
     auto params = parse_urlencoded(body);
 
@@ -1331,7 +1407,7 @@ void handle_verify_token(SSL *ssl, const std::string &body)
                  << "{\"success\": false}";
     }
     std::cerr << response.str() << std::endl;
-    SSL_write(ssl, response.str().c_str(), response.str().length());
+    send(client_socket, response.str().c_str(), response.str().length(), 0);
     // close(client_socket);
 }
 // Function to get current timestamp in milliseconds
@@ -1442,43 +1518,53 @@ std::string escape_json_string(const std::string &input)
     }
     return ss.str();
 }
-void save_post(SSL *ssl, const std::string &body) {
-    json postData;
-    try {
-        postData = json::parse(body);
-    } catch (json::parse_error& e) {
-        std::cerr << "JSON parse error: " << e.what() << std::endl;
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Invalid JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+void save_post(int client_socket, const std::string &body)
+{
+    std::cout << "Received request body: " << body << std::endl; // 디버그 로그 추가
+
+    Json::Value postData;
+    Json::CharReaderBuilder reader;
+    std::string errs;
+    std::istringstream s(body);
+    if (!Json::parseFromStream(reader, s, &postData, &errs))
+    {
+        std::cerr << "Failed to parse JSON: " << errs << std::endl;
+        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
-    std::string title = postData["title"];
-    std::string content = postData["content"];
-    std::string author = postData["author"];
-    std::string timestamp = postData["timestamp"];
+    std::string title = postData["title"].asString();
+    std::string content = postData["content"].asString();
+    std::string author = postData["author"].asString();
+    std::string timestamp = postData["timestamp"].asString();
+    // Process the content and save images
+    std::string output_path = "./images/"; // Ensure this directory exists and is writable
+    std::string processed_content = process_content_and_save_images(content, output_path);
 
     sqlite3_stmt *stmt;
     std::string sql = "INSERT INTO posts (title, content, author, timestamp) VALUES (?, ?, ?, ?);";
 
     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK) {
+    if (rc != SQLITE_OK)
+    {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Database error\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
     sqlite3_bind_text(stmt, 1, title.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, content.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, processed_content.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, author.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
 
     rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE) {
+    if (rc != SQLITE_DONE)
+    {
         std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Database error\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+        send(client_socket, response.c_str(), response.length(), 0);
         sqlite3_finalize(stmt);
         return;
     }
@@ -1486,67 +1572,10 @@ void save_post(SSL *ssl, const std::string &body) {
     sqlite3_finalize(stmt);
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
-    SSL_write(ssl, response.c_str(), response.length());
+    std::cerr << "save_post success!" << std::endl;
+    send(client_socket, response.c_str(), response.length(), 0);
+    // close(client_socket);
 }
-// void save_post(SSL *ssl, const std::string &body)
-// {
-//     std::cout << "Received request body: " << body << std::endl; // 디버그 로그 추가
-
-//     Json::Value postData;
-//     Json::CharReaderBuilder reader;
-//     std::string errs;
-//     std::istringstream s(body);
-//     if (!Json::parseFromStream(reader, s, &postData, &errs))
-//     {
-//         std::cerr << "Failed to parse JSON: " << errs << std::endl;
-//         std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-//         SSL_write(ssl, response.c_str(), response.length());
-//         return;
-//     }
-
-//     std::string title = postData["title"].asString();
-//     std::string content = postData["content"].asString();
-//     std::string author = postData["author"].asString();
-//     std::string timestamp = postData["timestamp"].asString();
-//     // Process the content and save images
-//     std::string output_path = "./images/"; // Ensure this directory exists and is writable
-//     std::string processed_content = process_content_and_save_images(content, output_path);
-
-//     sqlite3_stmt *stmt;
-//     std::string sql = "INSERT INTO posts (title, content, author, timestamp) VALUES (?, ?, ?, ?);";
-
-//     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-//         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-//         SSL_write(ssl, response.c_str(), response.length());
-//         return;
-//     }
-
-//     sqlite3_bind_text(stmt, 1, title.c_str(), -1, SQLITE_STATIC);
-//     sqlite3_bind_text(stmt, 2, processed_content.c_str(), -1, SQLITE_STATIC);
-//     sqlite3_bind_text(stmt, 3, author.c_str(), -1, SQLITE_STATIC);
-//     sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
-
-//     rc = sqlite3_step(stmt);
-//     if (rc != SQLITE_DONE)
-//     {
-//         std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
-//         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-//         SSL_write(ssl, response.c_str(), response.length());
-//         sqlite3_finalize(stmt);
-//         return;
-//     }
-
-//     sqlite3_finalize(stmt);
-
-//     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
-//     std::cerr << "save_post success!" << std::endl;
-//     SSL_write(ssl, response.c_str(), response.length());
-//     // close(client_socket);
-// }
-
 // Function to replace all occurrences of a substring with another substring in a string
 void replace_all(std::string &str, const std::string &from, const std::string &to)
 {
@@ -1557,7 +1586,7 @@ void replace_all(std::string &str, const std::string &from, const std::string &t
         start_pos += to.length();
     }
 }
-void handle_get_posts(SSL *ssl)
+void handle_get_posts(int client_socket)
 {
     std::string sql = "SELECT id, title, content, author, timestamp FROM posts;";
     sqlite3_stmt *stmt;
@@ -1567,7 +1596,7 @@ void handle_get_posts(SSL *ssl)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1595,7 +1624,7 @@ void handle_get_posts(SSL *ssl)
     // replace_all(json_response, "\\\"", "\"");
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
-    SSL_write(ssl, response.c_str(), response.length());
+    send(client_socket, response.c_str(), response.length(), 0);
     // close(client_socket);
 }
 std::vector<std::string> getImagesList(const std::string &directory)
@@ -1610,7 +1639,7 @@ std::vector<std::string> getImagesList(const std::string &directory)
     }
     return images;
 }
-void handle_get_images(SSL *ssl)
+void handle_get_images(int client_socket)
 {
     std::vector<std::string> images = getImagesList("./images");
     Json::Value json_images(Json::arrayValue);
@@ -1629,10 +1658,10 @@ void handle_get_images(SSL *ssl)
     response += "\r\n";
     response += response_body;
 
-    SSL_write(ssl, response.c_str(), response.length());
+    send(client_socket, response.c_str(), response.length(), 0);
     // close(client_socket);
 }
-void handle_delete_post(SSL *ssl, const std::string &request_body)
+void handle_delete_post(int client_socket, const std::string &request_body)
 {
     Json::Value postData;
     Json::CharReaderBuilder reader;
@@ -1642,7 +1671,7 @@ void handle_delete_post(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to parse JSON: " << errs << std::endl;
         std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1657,7 +1686,7 @@ void handle_delete_post(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1668,7 +1697,7 @@ void handle_delete_post(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Post not found: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         sqlite3_finalize(stmt);
         return;
     }
@@ -1681,7 +1710,7 @@ void handle_delete_post(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Unauthorized delete attempt by user: " << username << std::endl;
         std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1691,7 +1720,7 @@ void handle_delete_post(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1702,7 +1731,7 @@ void handle_delete_post(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         sqlite3_finalize(stmt);
         return;
     }
@@ -1710,7 +1739,7 @@ void handle_delete_post(SSL *ssl, const std::string &request_body)
     sqlite3_finalize(stmt);
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
-    SSL_write(ssl, response.c_str(), response.length());
+    send(client_socket, response.c_str(), response.length(), 0);
     // close(client_socket);
 }
 std::string parseMultipartData(const std::string &data, std::string &filename)
@@ -1748,69 +1777,69 @@ bool uploadFile(const std::string &content, const std::string &filename, const s
     return true;
 }
 // 이미지 업로드 핸들러
-void handleUploadImage(SSL *ssl, const std::string &request_body)
+void handleUploadImage(int client_socket, const std::string &request_body)
 {
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
     if (filename.empty() || file_content.empty())
     {
-        send_json_response2(ssl, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
+        send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
         return;
     }
 
     if (uploadFile(file_content, filename, UPLOAD_IMAGE_DIR))
     {
-        send_json_response2(ssl, 200, "OK", {{"success", true}, {"url", "images/" + filename}});
+        send_json_response2(client_socket, 200, "OK", {{"success", true}, {"url", "images/" + filename}});
     }
     else
     {
-        send_json_response2(ssl, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
+        send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
     }
 }
 // OBJ 파일 업로드 핸들러
-void handleUploadObj(SSL *ssl, const std::string &request_body)
+void handleUploadObj(int client_socket, const std::string &request_body)
 {
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
     if (filename.empty() || file_content.empty())
     {
-        send_json_response2(ssl, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
+        send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
         return;
     }
 
     if (uploadFile(file_content, filename, UPLOAD_OBJ_DIR))
     {
-        send_json_response2(ssl, 200, "OK", {{"success", true}, {"url", "uploads/objs/" + filename}});
+        send_json_response2(client_socket, 200, "OK", {{"success", true}, {"url", "uploads/objs/" + filename}});
     }
     else
     {
-        send_json_response2(ssl, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
+        send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
     }
 }
 // 일반 파일 업로드 핸들러
-void handleUploadFiles(SSL *ssl, const std::string &request_body)
+void handleUploadFiles(int client_socket, const std::string &request_body)
 {
     std::string filename;
     std::string file_content = parseMultipartData(request_body, filename);
 
     if (filename.empty() || file_content.empty())
     {
-        send_json_response2(ssl, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
+        send_json_response2(client_socket, 400, "Bad Request", {{"success", false}, {"message", "Invalid file data"}});
         return;
     }
 
-    if (uploadFile(file_content, filename, UPLOAD_DIR))
+    if (uploadFile(file_content, filename, UPLOAD_ROOT_DIR))
     {
-        send_json_response2(ssl, 200, "OK", {{"success", true}, {"url", "uploads/" + filename}});
+        send_json_response2(client_socket, 200, "OK", {{"success", true}});
     }
     else
     {
-        send_json_response2(ssl, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
+        send_json_response2(client_socket, 500, "Internal Server Error", {{"success", false}, {"message", "Failed to save file"}});
     }
 }
-void handle_get_comments(SSL *ssl, const std::string &query)
+void handle_get_comments(int client_socket, const std::string &query)
 {
     // Extract postId from query string
     std::string postIdStr;
@@ -1829,7 +1858,7 @@ void handle_get_comments(SSL *ssl, const std::string &query)
     {
         std::cerr << "Invalid postId: " << postIdStr << std::endl;
         std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Invalid postId\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1840,7 +1869,7 @@ void handle_get_comments(SSL *ssl, const std::string &query)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1865,9 +1894,9 @@ void handle_get_comments(SSL *ssl, const std::string &query)
     std::string json_response = Json::writeString(writer, jsonResponse);
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
-    SSL_write(ssl, response.c_str(), response.length());
+    send(client_socket, response.c_str(), response.length(), 0);
 }
-void handle_edit_comment(SSL *ssl, const std::string &request_body)
+void handle_edit_comment(int client_socket, const std::string &request_body)
 {
     Json::Value jsonData;
     Json::CharReaderBuilder readerBuilder;
@@ -1878,7 +1907,7 @@ void handle_edit_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to parse JSON: " << errs << std::endl;
         std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
     std::string IdStr = jsonData["id"].asString();
@@ -1892,7 +1921,7 @@ void handle_edit_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1908,7 +1937,7 @@ void handle_edit_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to find postId for comment: " << commentId << std::endl;
         std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Comment not found\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1922,7 +1951,7 @@ void handle_edit_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1934,7 +1963,7 @@ void handle_edit_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
     }
     else
     {
@@ -1944,13 +1973,13 @@ void handle_edit_comment(SSL *ssl, const std::string &request_body)
 
         Json::StreamWriterBuilder writer;
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + Json::writeString(writer, responseJson);
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
     }
 
     sqlite3_finalize(stmt);
     // close(client_socket);
 }
-void handle_delete_comment(SSL *ssl, const std::string &request_body)
+void handle_delete_comment(int client_socket, const std::string &request_body)
 {
     Json::Value jsonData;
     Json::CharReaderBuilder readerBuilder;
@@ -1961,7 +1990,7 @@ void handle_delete_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to parse JSON: " << errs << std::endl;
         std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
     std::string commentIdStr = jsonData["id"].asString();
@@ -1974,7 +2003,7 @@ void handle_delete_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -1990,7 +2019,7 @@ void handle_delete_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to find postId for comment: " << commentId << std::endl;
         std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Comment not found\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -2000,7 +2029,7 @@ void handle_delete_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -2010,7 +2039,7 @@ void handle_delete_comment(SSL *ssl, const std::string &request_body)
     {
         std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
     }
     else
     {
@@ -2020,13 +2049,13 @@ void handle_delete_comment(SSL *ssl, const std::string &request_body)
 
         Json::StreamWriterBuilder writer;
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + Json::writeString(writer, responseJson);
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
     }
 
     sqlite3_finalize(stmt);
     // close(client_socket);
 }
-void handle_add_comment(SSL *ssl, const std::string &request_body)
+void handle_add_comment(int client_socket, const std::string &request_body)
 {
     Json::Value jsonData;
     Json::CharReaderBuilder readerBuilder;
@@ -2038,7 +2067,7 @@ void handle_add_comment(SSL *ssl, const std::string &request_body)
         std::cerr << "Failed to parse JSON: " << errs << std::endl;
         // send error response
         std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -2051,7 +2080,7 @@ void handle_add_comment(SSL *ssl, const std::string &request_body)
         std::cerr << "postId is not a valid integer" << std::endl;
         // send error response
         std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"postId must be an integer\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
         return;
     }
 
@@ -2074,19 +2103,19 @@ void handle_add_comment(SSL *ssl, const std::string &request_body)
         std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
         // send error response
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
     }
     else
     {
         // send success response
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
-        SSL_write(ssl, response.c_str(), response.length());
+        send(client_socket, response.c_str(), response.length(), 0);
     }
 
     sqlite3_finalize(stmt);
     // close(client_socket);
 }
-void send_json_response(SSL *ssl, int status_code, const std::string &status_message, const std::string &json_content)
+void send_json_response(int client_socket, int status_code, const std::string &status_message, const std::string &json_content)
 {
     std::ostringstream response;
     response << "HTTP/1.1 " << status_code << " " << status_message << "\r\n";
@@ -2097,13 +2126,13 @@ void send_json_response(SSL *ssl, int status_code, const std::string &status_mes
     response << json_content;
 
     std::string response_str = response.str();
-    ssize_t bytes_sent = SSL_write(ssl, response_str.c_str(), response_str.length());
+    ssize_t bytes_sent = send(client_socket, response_str.c_str(), response_str.length(), 0);
     if (bytes_sent != static_cast<ssize_t>(response_str.length()))
     {
         std::cerr << "Failed to send full response. Sent " << bytes_sent << " out of " << response_str.length() << " bytes." << std::endl;
     }
 }
-void handle_drive_contents(SSL *ssl, const std::string &query)
+void handle_drive_contents(int client_socket, const std::string &query)
 {
     std::string path = "/";
     size_t path_pos = query.find("path=");
@@ -2118,7 +2147,7 @@ void handle_drive_contents(SSL *ssl, const std::string &query)
     }
 
     std::string decoded_path = url_decode(path);
-    std::string root_path = UPLOAD_DIR;
+    std::string root_path = UPLOAD_ROOT_DIR;
     std::string full_path = root_path + decoded_path;
 
     // 디버깅: 경로 정보 출력
@@ -2129,7 +2158,7 @@ void handle_drive_contents(SSL *ssl, const std::string &query)
     if (full_path.substr(0, root_path.length()) != root_path)
     {
         std::string error_json = "{\"error\": \"Access is not allowed\"}";
-        send_json_response(ssl, 403, "Forbidden", error_json);
+        send_json_response(client_socket, 403, "Forbidden", error_json);
         return;
     }
 
@@ -2165,7 +2194,7 @@ void handle_drive_contents(SSL *ssl, const std::string &query)
     {
         std::cerr << "Filesystem error: " << e.what() << std::endl;
         std::string error_json = "{\"error\": \"" + json_escape(e.what()) + "\"}";
-        send_json_response(ssl, 500, "Internal Server Error", error_json);
+        send_json_response(client_socket, 500, "Internal Server Error", error_json);
         return;
     }
 
@@ -2176,9 +2205,9 @@ void handle_drive_contents(SSL *ssl, const std::string &query)
     // 디버깅: 전송할 JSON 데이터 출력
     std::cerr << "Sending JSON: " << json_str << std::endl;
 
-    send_json_response(ssl, 200, "OK", json_str);
+    send_json_response(client_socket, 200, "OK", json_str);
 }
-void handle_download_file(SSL *ssl, const std::string &query)
+void handle_download_file(int client_socket, const std::string &query)
 {
     std::string path = "/";
     std::string name = "";
@@ -2218,8 +2247,7 @@ void handle_download_file(SSL *ssl, const std::string &query)
                                      "Content-Length: 21\r\n"
                                      "\r\n"
                                      "Access is not allowed";
-        SSL_write(ssl, error_response.c_str(), error_response.length());
-
+        send(client_socket, error_response.c_str(), error_response.length(), 0);
         return;
     }
 
@@ -2231,7 +2259,7 @@ void handle_download_file(SSL *ssl, const std::string &query)
                                      "Content-Length: 14\r\n"
                                      "\r\n"
                                      "File not found";
-        SSL_write(ssl, error_response.c_str(), error_response.length());
+        send(client_socket, error_response.c_str(), error_response.length(), 0);
         return;
     }
 
@@ -2244,7 +2272,7 @@ void handle_download_file(SSL *ssl, const std::string &query)
                                      "Content-Length: 25\r\n"
                                      "\r\n"
                                      "Error opening file";
-        SSL_write(ssl, error_response.c_str(), error_response.length());
+        send(client_socket, error_response.c_str(), error_response.length(), 0);
         return;
     }
 
@@ -2262,22 +2290,22 @@ void handle_download_file(SSL *ssl, const std::string &query)
     header << "\r\n";
     // 헤더 전송
     std::string header_str = header.str();
-    SSL_write(ssl, header_str.c_str(), header_str.length());
+    send(client_socket, header_str.c_str(), header_str.length(), 0);
 
     // 파일 내용 전송
     std::vector<char> buffer(8192); // 8KB 버퍼
     while (file.read(buffer.data(), buffer.size()))
     {
-        SSL_write(ssl, buffer.data(), file.gcount());
+        send(client_socket, buffer.data(), file.gcount(), 0);
     }
     if (file.gcount() > 0)
     {
-        SSL_write(ssl, buffer.data(), file.gcount());
+        send(client_socket, buffer.data(), file.gcount(), 0);
     }
 
     file.close();
 }
-void handle_delete_item(SSL *ssl, const std::string &request_body)
+void handle_delete_item(int client_socket, const std::string &request_body)
 {
     json response;
     try
@@ -2319,16 +2347,16 @@ void handle_delete_item(SSL *ssl, const std::string &request_body)
             response["message"] = "Item not found";
         }
 
-        send_json_response2(ssl, 200, "OK", response);
+        send_json_response2(client_socket, 200, "OK", response);
     }
     catch (const std::exception &e)
     {
         response["success"] = false;
         response["message"] = e.what();
-        send_json_response2(ssl, 400, "Bad Request", response);
+        send_json_response2(client_socket, 400, "Bad Request", response);
     }
 }
-void handle_rename_item(SSL *ssl, const std::string &request_body)
+void handle_rename_item(int client_socket, const std::string &request_body)
 {
     json response;
     try
@@ -2380,10 +2408,10 @@ void handle_rename_item(SSL *ssl, const std::string &request_body)
         response["message"] = e.what();
     }
 
-    send_json_response2(ssl, response["success"] ? 200 : 400,
+    send_json_response2(client_socket, response["success"] ? 200 : 400,
                         response["success"] ? "OK" : "Bad Request", response);
 }
-void handle_create_folder(SSL *ssl, const std::string &request_body)
+void handle_create_folder(int client_socket, const std::string &request_body)
 {
     json response;
     try
@@ -2429,15 +2457,14 @@ void handle_create_folder(SSL *ssl, const std::string &request_body)
         response["message"] = e.what();
     }
 
-    send_json_response2(ssl, response["success"] ? 200 : 400,
+    send_json_response2(client_socket, response["success"] ? 200 : 400,
                         response["success"] ? "OK" : "Bad Request", response);
 }
-std::unordered_map<std::string, std::function<void(SSL *ssl)>> get_routes = {
-    {"/ws", [](SSL *ssl)
+std::unordered_map<std::string, std::function<void(int)>> get_routes = {
+    {"/ws", [](int client_socket)
      {
          // Handle WebSocket connection
          // Extract Sec-WebSocket-Key and call handle_websocket_connection
-         // 주의: WebSocket도 SSL/TLS를 사용하도록 수정해야 함 (wss://)
      }},
     {"/usercount", handle_user_count_request},
     {"/filelist", handle_file_list_request},
@@ -2445,7 +2472,7 @@ std::unordered_map<std::string, std::function<void(SSL *ssl)>> get_routes = {
     {"/images", handle_get_images},
     // Add other GET routes here
 };
-std::unordered_map<std::string, std::function<void(SSL *ssl, const std::string &)>> post_routes = {
+std::unordered_map<std::string, std::function<void(int, const std::string &)>> post_routes = {
     {"/signup", handle_signup},
     {"/login", handle_login},
     {"/verify-token", handle_verify_token},
@@ -2454,7 +2481,7 @@ std::unordered_map<std::string, std::function<void(SSL *ssl, const std::string &
     {"/delete_post", handle_delete_post},
     {"/upload_image", handleUploadImage},
     {"/upload_obj", handleUploadObj},
-    {"/upload_file", handleUploadFiles},
+    {"/upload-file", handleUploadFiles},
     {"/add_comment", handle_add_comment},
     {"/edit_comment", handle_edit_comment},
     {"/delete_comment", handle_delete_comment},
@@ -2462,22 +2489,22 @@ std::unordered_map<std::string, std::function<void(SSL *ssl, const std::string &
     {"/rename-item", handle_rename_item},
     {"/create-folder", handle_create_folder},
 };
-std::unordered_map<std::string, std::function<void(SSL *ssl, const std::string &)>> static_routes = {
+std::unordered_map<std::string, std::function<void(int, const std::string &)>> static_routes = {
     {"/images", send_image},
     {"/assets/js", send_js},
     {"/assets/css", send_css},
-    {"/uploads", send_obj},
+    {"/uploads/objs", send_obj},
     {"/assets/html", send_html},
 };
 // 쿼리를 처리하는 함수의 타입 정의
-using QueryHandler = std::function<void(SSL *ssl, const std::string &)>;
+using QueryHandler = std::function<void(int, const std::string &)>;
 
 // GET 요청을 처리하는 라우트 맵 정의
 std::unordered_map<std::string, QueryHandler> get_routes_with_query = {
     {"/comments", handle_get_comments},
     {"/drive-contents", handle_drive_contents},
     {"/download-file", handle_download_file}};
-void handle_request(SSL *ssl, const std::string &request)
+void handle_request(int client_socket, const std::string &request)
 {
     std::istringstream request_stream(request);
     std::string method, path, version;
@@ -2485,7 +2512,7 @@ void handle_request(SSL *ssl, const std::string &request)
 
     std::unordered_map<std::string, std::string> headers;
     std::string line;
-
+    
     // Ignore the first line (request line)
     std::getline(request_stream, line);
 
@@ -2502,17 +2529,15 @@ void handle_request(SSL *ssl, const std::string &request)
     }
 
     // Check for CSRF token in POST requests
-    // if (method == "POST")
-    // {
-    //     if (headers["X-Requested-With"] != "XMLHttpRequest")
-    //     {
-    //         std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nCSRF validation failed";
-    //         // send(client_socket, response.c_str(), response.length(), 0);
-    //         // send() 대신 SSL_write() 사용
-    //         SSL_write(ssl, response.c_str(), response.length());
-    //         return;
-    //     }
-    // }
+    if (method == "POST")
+    {
+        if (headers["X-Requested-With"] != "XMLHttpRequest")
+        {
+            std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nCSRF validation failed";
+            send(client_socket, response.c_str(), response.length(), 0);
+            return;
+        }
+    }
 
     std::string query;
     size_t query_pos = path.find("?");
@@ -2524,34 +2549,35 @@ void handle_request(SSL *ssl, const std::string &request)
 
     if (method == "GET")
     {
-        // 쿼리를 사용하는 라우트 확인
+        // 먼저 쿼리를 사용하는 라우트를 확인
         auto query_route = get_routes_with_query.find(path);
         if (query_route != get_routes_with_query.end())
         {
-            query_route->second(ssl, query);
+            query_route->second(client_socket, query);
         }
         else
         {
             auto route = get_routes.find(path);
             if (route != get_routes.end())
             {
-                route->second(ssl);
+                route->second(client_socket);
             }
             else
             {
-                // 정적 파일 처리
+                // 여기에 정적 파일 처리나 404 응답 등을 추가할 수 있습니다.
+                // Check static routes
                 for (const auto &entry : static_routes)
                 {
                     if (path.find(entry.first) == 0)
                     {
-                        entry.second(ssl, path.substr(1));
+                        entry.second(client_socket, path.substr(1));
                         return;
                     }
                 }
-                // 폰트 처리
+                // Special case for fonts
                 if (path.find("/assets/fonts/") == 0)
                 {
-                    std::string font_path = path.substr(1);
+                    std::string font_path = path.substr(1); // Remove leading '/'
                     size_t query_pos = font_path.find("?");
                     if (query_pos != std::string::npos)
                     {
@@ -2559,13 +2585,15 @@ void handle_request(SSL *ssl, const std::string &request)
                     }
                     std::string extension = font_path.substr(font_path.find_last_of("."));
                     std::string content_type = get_font_content_type(extension);
-                    send_font(ssl, font_path, content_type);
+                    send_font(client_socket, font_path, content_type);
                 }
-                else if(path == "/")
+                else
                 {
-                    // 기본 라우트
-                    send_html(ssl, "assets/html/index4.html");
+                    // Default route
+                    send_html(client_socket, "assets/html/index.html");
                 }
+                // Default route
+                send_html(client_socket, "assets/html/index.html");
             }
         }
     }
@@ -2579,7 +2607,7 @@ void handle_request(SSL *ssl, const std::string &request)
             auto route = post_routes.find(path);
             if (route != post_routes.end())
             {
-                route->second(ssl, body);
+                route->second(client_socket, body);
             }
             else
             {
@@ -2592,226 +2620,196 @@ void handle_request(SSL *ssl, const std::string &request)
         }
     }
 }
-void handle_client_ssl(SSL *ssl)
+void handle_client(int client_socket)
 {
+    std::vector<char> buffer(BUFFER_SIZE);
     std::string request;
-    char buffer[BUFFER_SIZE];
-    int bytes;
-    bool end_of_request = false;
+    int bytes_received;
 
-    while (!end_of_request) {
-        bytes = SSL_read(ssl, buffer, sizeof(buffer));
-        if (bytes <= 0) {
-            // 에러 또는 연결 종료
-            int err = SSL_get_error(ssl, bytes);
-            if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
-                // 재시도 필요
-                continue;
-            }
+    while ((bytes_received = recv(client_socket, buffer.data(), buffer.size(), 0)) > 0)
+    {
+        request.append(buffer.data(), bytes_received);
+        // Check if the full request has been received (i.e., we have received all the headers)
+        if (request.find("\r\n\r\n") != std::string::npos)
+        {
             break;
         }
+    }
 
-        request.append(buffer, bytes);
+    if (bytes_received < 0)
+    {
+        perror("recv failed");
+        close(client_socket);
+        return;
+    }
 
-        // HTTP 요청의 끝을 확인
-        if (request.find("\r\n\r\n") != std::string::npos) {
-            end_of_request = true;
+    // Extract Content-Length
+    size_t content_length_pos = request.find("Content-Length:");
+    if (content_length_pos != std::string::npos)
+    {
+        content_length_pos += 15; // Move past "Content-Length:"
+        size_t end_pos = request.find("\r\n", content_length_pos);
+        int content_length = std::stoi(request.substr(content_length_pos, end_pos - content_length_pos));
 
-            // POST 요청의 경우 Content-Length 확인
-            if (request.find("POST") == 0) {
-                size_t content_length_pos = request.find("Content-Length: ");
-                if (content_length_pos != std::string::npos) {
-                    size_t content_length_end = request.find("\r\n", content_length_pos);
-                    std::string content_length_str = request.substr(content_length_pos + 16, content_length_end - (content_length_pos + 16));
-                    int content_length = std::stoi(content_length_str);
-                    
-                    size_t header_end = request.find("\r\n\r\n") + 4;
-                    size_t body_length = request.length() - header_end;
-                    
-                    while (body_length < content_length) {
-                        bytes = SSL_read(ssl, buffer, sizeof(buffer));
-                        if (bytes <= 0) break;
-                        request.append(buffer, bytes);
-                        body_length += bytes;
-                    }
-                }
+        // Read the body if it is not completely read yet
+        size_t header_end_pos = request.find("\r\n\r\n");
+        if (request.size() - (header_end_pos + 4) < content_length)
+        {
+            size_t bytes_remaining = content_length - (request.size() - (header_end_pos + 4));
+            while (bytes_remaining > 0 && (bytes_received = recv(client_socket, buffer.data(), buffer.size(), 0)) > 0)
+            {
+                request.append(buffer.data(), bytes_received);
+                bytes_remaining -= bytes_received;
+            }
+
+            if (bytes_received < 0)
+            {
+                perror("recv failed");
+                close(client_socket);
+                return;
             }
         }
     }
 
-    if (!request.empty()) {
-        handle_request(ssl, request);
+    try
+    {
+        handle_request(client_socket, request);
+    }
+    catch (const std::exception &e)
+    {
+        json response = {
+            {"success", false},
+            {"message", "Internal server error"}};
+        send_json_response2(client_socket, 500, "Internal Server Error", response);
+        std::cerr << "Error handling request: " << e.what() << std::endl;
     }
 
-    SSL_shutdown(ssl);
-    SSL_free(ssl);
+    close(client_socket);
 }
-// void handle_client_ssl(SSL *ssl)
-// {
-//     char buffer[BUFFER_SIZE];
-//     int bytes;
 
-//     bytes = SSL_read(ssl, buffer, sizeof(buffer));
-//     if (bytes > 0)
+// void handle_client(int client_socket)
+// {
+//     std::vector<char> buffer(BUFFER_SIZE);
+//     std::string request;
+//     int bytes_received;
+
+//     while ((bytes_received = recv(client_socket, buffer.data(), buffer.size(), 0)) > 0)
 //     {
-//         buffer[bytes] = 0;
-//         handle_request(ssl, std::string(buffer));
+//         request.append(buffer.data(), bytes_received);
+//         // Check if the full request has been received (i.e., we have received all the headers)
+//         if (request.find("\r\n\r\n") != std::string::npos)
+//         {
+//             break;
+//         }
 //     }
 
-//     SSL_shutdown(ssl);
-//     SSL_free(ssl);
+//     if (bytes_received < 0)
+//     {
+//         perror("recv failed");
+//         close(client_socket);
+//         return;
+//     }
+
+//     // Extract Content-Length
+//     size_t content_length_pos = request.find("Content-Length:");
+//     if (content_length_pos != std::string::npos)
+//     {
+//         content_length_pos += 15; // Move past "Content-Length:"
+//         size_t end_pos = request.find("\r\n", content_length_pos);
+//         int content_length = std::stoi(request.substr(content_length_pos, end_pos - content_length_pos));
+
+//         // Read the body if it is not completely read yet
+//         size_t header_end_pos = request.find("\r\n\r\n");
+//         if (request.size() - (header_end_pos + 4) < content_length)
+//         {
+//             size_t bytes_remaining = content_length - (request.size() - (header_end_pos + 4));
+//             while (bytes_remaining > 0 && (bytes_received = recv(client_socket, buffer.data(), buffer.size(), 0)) > 0)
+//             {
+//                 request.append(buffer.data(), bytes_received);
+//                 bytes_remaining -= bytes_received;
+//             }
+
+//             if (bytes_received < 0)
+//             {
+//                 perror("recv failed");
+//                 close(client_socket);
+//                 return;
+//             }
+//         }
+//     }
+//     try
+//     {
+//         handle_request(client_socket, request);
+//     }
+//     catch (const std::exception &e)
+//     {
+//         json response = {
+//             {"success", false},
+//             {"message", "Internal server error"}};
+//         send_json_response2(client_socket, 500, "Internal Server Error", response);
+//         std::cerr << "Error handling request: " << e.what() << std::endl;
+//     }
+
+//     close(client_socket);
 // }
-SSL_CTX *create_context()
-{
-    const SSL_METHOD *method;
-    SSL_CTX *ctx;
-
-    method = TLS_server_method();
-
-    ctx = SSL_CTX_new(method);
-    if (!ctx)
-    {
-        perror("Unable to create SSL context");
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    return ctx;
-}
-void configure_context(SSL_CTX *ctx)
-{
-    // 인증서와 개인키 설정
-    if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0)
-    {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0)
-    {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-}
 
 void start_server()
 {
-    int server_fd;
-    struct sockaddr_in address;
-    int addrlen = sizeof(address);
-
-    // Initialize OpenSSL
-    SSL_load_error_strings();
-    OpenSSL_add_ssl_algorithms();
-
-    SSL_CTX *ctx = create_context();
-    configure_context(ctx);
+    int server_socket, client_socket;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addr_len = sizeof(client_addr);
 
     // Create socket file descriptor
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket == 0)
     {
-        perror("In socket");
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+    // SO_REUSEADDR 옵션 설정
+    int opt = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    {
+        perror("setsockopt");
+        close(server_socket);
+        exit(EXIT_FAILURE);
+    }
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT);
+
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    {
+        perror("bind failed");
+        close(server_socket);
         exit(EXIT_FAILURE);
     }
 
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+    if (listen(server_socket, 3) < 0)
     {
-        perror("In bind");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(server_fd, 10) < 0)
-    {
-        perror("In listen");
+        perror("listen");
+        close(server_socket);
         exit(EXIT_FAILURE);
     }
 
     std::cout << "Server started on port " << PORT << std::endl;
 
-    while (1)
+    while (true)
     {
-        int client_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
+        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_len);
         if (client_socket < 0)
         {
-            perror("In accept");
+            perror("accept");
             continue;
-        }
-
-        SSL *ssl = SSL_new(ctx);
-        if (!ssl)
-        {
-            std::cerr << "Error creating SSL" << std::endl;
-            close(client_socket);
-            continue;
-        }
-
-        SSL_set_fd(ssl, client_socket);
-
-        if (SSL_accept(ssl) <= 0)
-        {
-            unsigned long err = ERR_get_error();
-            char *err_msg = ERR_error_string(err, NULL);
-            fprintf(stderr, "SSL_accept failed: %s\n", err_msg);
-
-            // 클라이언트 요청 확인
-            char buf[4096];
-            int bytes = recv(client_socket, buf, sizeof(buf) - 1, MSG_PEEK);
-            if (bytes > 0)
-            {
-                buf[bytes] = '\0'; // Null-terminate the string
-                fprintf(stderr, "Received request (%d bytes):\n%s\n", bytes, buf);
-
-                // HTTP 요청 확인
-                if (strncmp(buf, "GET ", 4) == 0 || strncmp(buf, "POST ", 5) == 0 || strncmp(buf, "HEAD ", 5) == 0)
-                {
-                    fprintf(stderr, "Detected HTTP request\n");
-                    // HTTP 요청에 대한 리다이렉션 또는 에러 응답
-                    const char *redirect = "HTTP/1.1 301 Moved Permanently\r\n"
-                                           "Location: https://improved-zebra-wpw5q79q7wg3559r-35500.app.github.dev\r\n"
-                                           "Content-Length: 0\r\n"
-                                           "\r\n";
-                    send(client_socket, redirect, strlen(redirect), 0);
-                }
-                else
-                {
-                    fprintf(stderr, "Unknown request type\n");
-                    // 알 수 없는 요청 유형에 대한 처리
-                    // const char *error_response = "HTTP/1.1 400 Bad Request\r\n"
-                    //                              "Content-Length: 11\r\n"
-                    //                              "\r\n"
-                    //                              "Bad Request";
-                    const char *redirect = "HTTP/1.1 301 Moved Permanently\r\n"
-                                           "Location: /assets/html/index4.html\r\n"
-                                           "Content-Length: 0\r\n"
-                                           "\r\n";
-                    // send(client_socket, error_response, strlen(error_response), 0);
-                    send(client_socket, redirect, strlen(redirect), 0);
-                }
-            }
-            else
-            {
-                fprintf(stderr, "Failed to read client request\n");
-            }
-
-            ERR_print_errors_fp(stderr); // Print detailed OpenSSL errors
-            SSL_free(ssl);
-            close(client_socket);
-            //return; // 오류 발생 시 함수 종료
         }
         else
         {
-            std::thread(handle_client_ssl, ssl).detach();
+
+            std::thread(handle_client, client_socket).detach();
         }
     }
-
-    SSL_CTX_free(ctx);
-    EVP_cleanup();
-    close(server_fd);
 }
+
 int main()
 {
     // SIGPIPE 시그널 무시

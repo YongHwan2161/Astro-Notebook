@@ -1,6 +1,6 @@
 // auth.js
 import { verifyToken, setToken, removeToken, getToken } from './utils.js';
-import { on, emit } from './eventManager.js';
+import { emit } from './eventManager.js';
 
 export function initAuth(onLoginSuccess, onLogoutSuccess) {
     // 인증 관련 초기화 코드
@@ -97,43 +97,106 @@ export function submitSignup() {
         });
 }
 
-export async function submitLogin() {
-    // submitLogin 함수 구현
+export async function submitLogin(event) {
+    event.preventDefault();
     const username = document.getElementById('login_username').value;
     const password = document.getElementById('login_password').value;
     const loginResult = document.getElementById('loginResult');
 
-    fetch('/login', {
+    if (!username || !password) {
+        showLoginError(loginResult, 'Username and password are required');
+        return;
+    }
+
+    try {
+        showLoginProgress(loginResult);
+        const data = await performLoginRequest(username, password);
+        handleLoginSuccess(data, username);
+    } catch (error) {
+        handleLoginError(loginResult, error);
+    }
+}
+
+function showLoginError(loginResult, message) {
+    loginResult.textContent = message;
+    loginResult.style.color = 'red';
+}
+
+function showLoginProgress(loginResult) {
+    loginResult.textContent = 'Logging in...';
+    loginResult.style.color = 'blue';
+}
+
+async function performLoginRequest(username, password) {
+    const response = await fetch('/login', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
         },
         body: JSON.stringify({ username, password })
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                // 토큰을 안전하게 저장 (HttpOnly 쿠키 사용 권장)
-                // 여기서는 예시로 localStorage를 사용
-                //localStorage.setItem('token', data.token);
-                setToken(data.token);
-                localStorage.setItem('username', data.username);
-                showWelcomeMessage(username);
-            } else {
-                loginResult.textContent = 'Login failed';
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            loginResult.textContent = 'An error occurred during login';
-        });
+    });
+
+    if (!response.ok) {
+        throw new Error('Network response was not ok');
+    }
+
+    return response.json();
 }
+
+function handleLoginSuccess(data, username) {
+    if (data.success) {
+        setToken(data.token);
+        localStorage.setItem('username', username);
+        showWelcomeMessage(username);
+        emit('login', { username }); // 이벤트 발생
+    } else {
+        throw new Error('Login failed');
+    }
+}
+
+function handleLoginError(loginResult, error) {
+    console.error('Login error:', error);
+    showLoginError(loginResult, 'An error occurred during login. Please try again.');
+}
+
+// export async function submitLogin() {
+//     // submitLogin 함수 구현
+//     const username = document.getElementById('login_username').value;
+//     const password = document.getElementById('login_password').value;
+//     const loginResult = document.getElementById('loginResult');
+
+//     fetch('/login', {
+//         method: 'POST',
+//         headers: {
+//             'Content-Type': 'application/json',
+//             'X-Requested-With': 'XMLHttpRequest'
+//         },
+//         body: JSON.stringify({ username, password })
+//     })
+//         .then(response => {
+//             if (!response.ok) {
+//                 throw new Error('Network response was not ok');
+//             }
+//             return response.json();
+//         })
+//         .then(data => {
+//             if (data.success) {
+//                 // 토큰을 안전하게 저장 (HttpOnly 쿠키 사용 권장)
+//                 // 여기서는 예시로 localStorage를 사용
+//                 //localStorage.setItem('token', data.token);
+//                 setToken(data.token);
+//                 localStorage.setItem('username', data.username);
+//                 showWelcomeMessage(username);
+//             } else {
+//                 loginResult.textContent = 'Login failed';
+//             }
+//         })
+//         .catch(error => {
+//             console.error('Error:', error);
+//             loginResult.textContent = 'An error occurred during login';
+//         });
+// }
 
 export function logout() {
     // logout 함수 구현
