@@ -1,43 +1,43 @@
 {
-    "version": "0.2.0",
-    "configurations": [
+  "version": "0.2.0",
+  "configurations": [
       {
-        "name": "C/C++: gcc build and debug active file",
-        "type": "cppdbg",
-        "request": "launch",
-        "program": "${fileDirname}/${fileBasenameNoExtension}",
-        "args": [],
-        "stopAtEntry": false,
-        "cwd": "${fileDirname}",
-        "environment": [],
-        "externalConsole": false,
-        "MIMode": "gdb",
-        "setupCommands": [
-          {
-            "description": "Enable pretty-printing for gdb",
-            "text": "-enable-pretty-printing",
-            "ignoreFailures": true
-          }
-        ],
-        "preLaunchTask": "C/C++: gcc build active file",
-        "miDebuggerPath": "/usr/bin/gdb"
+          "name": "C/C++: g++ build and debug active file",
+          "type": "cppdbg",
+          "request": "launch",
+          "program": "${fileDirname}/${fileBasenameNoExtension}",
+          "args": [],
+          "stopAtEntry": false,
+          "cwd": "${fileDirname}",
+          "environment": [],
+          "externalConsole": false,
+          "MIMode": "gdb",
+          "setupCommands": [
+              {
+                  "description": "Enable pretty-printing for gdb",
+                  "text": "-enable-pretty-printing",
+                  "ignoreFailures": true
+              }
+          ],
+          "preLaunchTask": "C/C++: g++ build active file",
+          "miDebuggerPath": "/usr/bin/gdb"
       },
       {
-        "type": "chrome",
-        "request": "launch",
-        "name": "Launch Chrome against localhost",
-        "url": "http://localhost:8080",
-        "webRoot": "${workspaceFolder}",
-        "sourceMaps": true,
-        "sourceMapPathOverrides": {
-          "webpack:///./src/*": "${webRoot}/src/*"
-        }
+          "type": "chrome",
+          "request": "launch",
+          "name": "Launch Chrome against localhost",
+          "url": "https://improved-zebra-wpw5q79q7wg3559r-8443.app.github.dev/",
+          "webRoot": "${workspaceFolder}",
+          "sourceMaps": true,
+          "sourceMapPathOverrides": {
+              "webpack:///./src/*": "${webRoot}/src/*"
+          }
       }
-    ],
-    "compounds": [
+  ],
+  "compounds": [
       {
-        "name": "Full Stack: Server + Client",
-        "configurations": ["C/C++: gcc build and debug active file", "Launch Chrome against localhost"]
+          "name": "Full Stack: Server + Client",
+          "configurations": ["C/C++: g++ build and debug active file", "Launch Chrome against localhost"]
       }
-    ]
-  }
+  ]
+}

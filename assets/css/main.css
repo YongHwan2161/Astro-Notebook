@@ -7,7 +7,38 @@
 	templated.co @templatedco
 	Released for free under the Creative Commons Attribution 3.0 license (templated.co/license)
 */
-
+:root {
+	--color-primary: #8a4680;
+	--color-secondary: #f2f2f2;
+	--color-text: #444;
+	--color-background: #fff;
+	--font-main: "Poppins", sans-serif;
+	--font-size-base: 1rem;
+	--spacing-small: 0.5rem;
+	--spacing-medium: 1rem;
+	--spacing-large: 2rem;
+	--border-radius: 2px;
+  }
+  body {
+	background-color: var(--color-background);
+	color: var(--color-text);
+	font-family: var(--font-main);
+	font-size: var(--font-size-base);
+	line-height: 1.65;
+	-webkit-text-size-adjust: none;
+  }
+  
+  .button {
+	background-color: var(--color-secondary);
+	color: var(--color-text);
+	padding: var(--spacing-small) var(--spacing-medium);
+	border-radius: var(--border-radius);
+  }
+  
+  .wrapper.style1 {
+	background-color: var(--color-primary);
+	color: #e2d1df;
+  }
 /* Reset */
 
 html,
@@ -118,10 +149,6 @@ section {
 	display: block;
 }
 
-body {
-	line-height: 1;
-}
-
 ol,
 ul {
 	list-style: none;
@@ -144,11 +171,6 @@ table {
 	border-collapse: collapse;
 	border-spacing: 0;
 }
-
-body {
-	-webkit-text-size-adjust: none;
-}
-
 /* Box Model */
 
 *,
@@ -264,6 +286,10 @@ body {
 		width: 90%;
 	}
 
+	.drive-item.grid {
+		width: calc(33.333% - 20px);
+	}
+
 }
 
 @media screen and (max-width: 736px) {
@@ -290,6 +316,18 @@ body {
 		width: 90% !important;
 	}
 
+	.drive-item.grid {
+		width: calc(50% - 20px);
+	}
+
+	.drive-item:not(.grid) {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.drive-item:not(.grid) .drive-item-content {
+		margin-bottom: 10px;
+	}
 }
 
 @media screen and (max-width: 480px) {
@@ -316,6 +354,33 @@ body {
 		width: 90% !important;
 	}
 
+	.drive-item.grid {
+		width: calc(100% - 20px);
+	}
+
+	.item-menu {
+		flex-direction: column;
+		width: 100%;
+	}
+
+	.item-menu button {
+		width: 100%;
+	}
+
+	/* 추가된 스타일 */
+	h1,
+	h2,
+	h3 {
+		font-size: 1.5em;
+	}
+
+	.hidden-mobile {
+		display: none;
+	}
+
+	.mobile-full-width {
+		width: 100% !important;
+	}
 }
 
 /* Grid */
@@ -2076,48 +2141,41 @@ hr {
 }
 
 /* Button */
-
+.button,
+button,
 input[type="submit"],
 input[type="reset"],
-input[type="button"],
-button,
-.button {
-	-moz-appearance: none;
-	-webkit-appearance: none;
-	-ms-appearance: none;
-	appearance: none;
-	-moz-transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-	-webkit-transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-	-ms-transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-	transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-	border-radius: 2px;
-	border: 0;
-	cursor: pointer;
-	display: inline-block;
-	font-weight: 300;
-	height: 2.85rem;
-	line-height: 2.95rem;
-	padding: 0 1.5rem;
-	text-align: center;
-	text-decoration: none;
-	text-transform: uppercase;
-	white-space: nowrap;
+input[type="button"] {
+    appearance: none;
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+    border-radius: var(--border-radius);
+    border: 0;
+    cursor: pointer;
+    display: inline-block;
+    font-weight: 300;
+    height: 2.85rem;
+    line-height: 2.95rem;
+    padding: 0 1.5rem;
+    text-align: center;
+    text-decoration: none;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
+.button.icon,
+button.icon,
 input[type="submit"].icon,
 input[type="reset"].icon,
-input[type="button"].icon,
-button.icon,
-.button.icon {
-	padding-left: 1.35rem;
+input[type="button"].icon {
+    padding-left: 1.35rem;
 }
 
-input[type="submit"].icon:before,
-input[type="reset"].icon:before,
-input[type="button"].icon:before,
-button.icon:before,
-.button.icon:before {
-	margin-right: 0.5rem;
+.button.icon::before,
+button.icon::before,
+input[type="submit"].icon::before,
+input[type="reset"].icon::before,
+input[type="button"].icon::before {
+    margin-right: 0.5rem;
 }
 
 input[type="submit"].fit,
@@ -4724,155 +4782,236 @@ body.is-mobile .banner>article {
 	overflow: visible !important;
 	/* Ensure that the overflow is visible */
 }
+
 .ql-toolbar .ql-formats {
-    display: flex;
-    align-items: top;
+	display: flex;
+	align-items: top;
 }
 
 .ql-toolbar .ql-formats button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    text-transform: none; /* 소문자 유지 */
-    line-height: normal; /* 줄 간격을 기본값으로 설정 */
-    vertical-align: middle; /* 수직 정렬을 중간으로 설정 */
-    padding: 0; /* 여백 제거 */
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	text-transform: none;
+	/* 소문자 유지 */
+	line-height: normal;
+	/* 줄 간격을 기본값으로 설정 */
+	vertical-align: middle;
+	/* 수직 정렬을 중간으로 설정 */
+	padding: 0;
+	/* 여백 제거 */
 }
 
 .ql-toolbar .ql-formats button strong {
-    display: inline-block;
-    line-height: 1.2; /* 아이콘 텍스트의 줄 간격 조정 */
-    font-size: 14px; /* 아이콘 텍스트 크기 조정 */
-}
-#drive-content {
-    display: flex;
-    flex-wrap: wrap;
+	display: inline-block;
+	line-height: 1.2;
+	/* 아이콘 텍스트의 줄 간격 조정 */
+	font-size: 14px;
+	/* 아이콘 텍스트 크기 조정 */
 }
 
-.drive-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 5px;
-    border-bottom: 1px solid #eee;
-    width: 100%;
-}
-
-.drive-item.grid {
-    width: calc(25% - 10px);
-    margin: 5px;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    border: 1px solid #eee;
-    border-radius: 5px;
-}
-
-.drive-item-content {
-    display: flex;
-    align-items: center;
-}
-
-.drive-item.grid .drive-item-content {
-    flex-direction: column;
-}
-
-.drive-item-name {
-    margin-left: 10px;
-}
-
-.drive-item.grid .drive-item-name {
-    margin-left: 0;
-    margin-top: 5px;
-}
-
-.item-menu {
-    display: flex;
-}
-
-.item-menu button {
-    margin-left: 5px;
-    padding: 2px 5px;
-    font-size: 0.8em;
-}
-
-.drive-item.grid .item-menu {
-    margin-top: 5px;
-}
 .loading {
-    text-align: center;
-    padding: 20px;
-    font-style: italic;
+	text-align: center;
+	padding: 20px;
+	font-style: italic;
 }
+
 .error {
-    color: red;
-    text-align: center;
-    padding: 20px;
+	color: red;
+	text-align: center;
+	padding: 20px;
 }
+
 .comments-container {
-    max-width: 800px;
-    margin: 20px auto;
-    font-family: Arial, sans-serif;
+	max-width: 800px;
+	margin: 20px auto;
+	font-family: Arial, sans-serif;
 }
 
 .comment {
-    background-color: #f9f9f9;
-    border: 1px solid #e1e1e1;
-    border-radius: 5px;
-    padding: 15px;
-    margin-bottom: 15px;
-    transition: all 0.3s ease;
+	background-color: #f9f9f9;
+	border: 1px solid #e1e1e1;
+	border-radius: 5px;
+	padding: 15px;
+	margin-bottom: 15px;
+	transition: all 0.3s ease;
 }
 
 .comment:hover {
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .comment-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 10px;
 }
 
 .comment-author {
-    font-weight: bold;
-    color: #333;
+	font-weight: bold;
+	color: #333;
 }
 
 .comment-timestamp {
-    font-size: 0.8em;
-    color: #777;
+	font-size: 0.8em;
+	color: #777;
 }
 
 .comment-text {
-    line-height: 1.6;
-    color: #444;
+	line-height: 1.6;
+	color: #444;
 }
 
 .comment-actions {
-    margin-top: 10px;
-    text-align: right;
+	margin-top: 10px;
+	text-align: right;
 }
 
 .comment-actions button {
-    background-color: #f0f0f0;
-    border: none;
-    padding: 5px 10px;
-    margin-left: 10px;
-    cursor: pointer;
-    border-radius: 3px;
-    transition: background-color 0.3s ease;
+	background-color: #f0f0f0;
+	border: none;
+	padding: 5px 10px;
+	margin-left: 10px;
+	cursor: pointer;
+	border-radius: 3px;
+	transition: background-color 0.3s ease;
 }
 
 .comment-actions button:hover {
-    background-color: #e0e0e0;
+	background-color: #e0e0e0;
 }
 
 .no-comments {
-    text-align: center;
-    color: #777;
-    font-style: italic;
+	text-align: center;
+	color: #777;
+	font-style: italic;
+}
+
+/* 전체 드라이브 컨테이너 */
+#drive-content {
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 20px;
+	font-family: Arial, sans-serif;
+}
+
+/* 현재 경로 표시 */
+#current-path {
+	font-size: 1.2em;
+	margin-bottom: 20px;
+	padding: 10px;
+	background-color: #f0f0f0;
+	border-radius: 5px;
+}
+
+/* 드라이브 아이템 공통 스타일 */
+.drive-item {
+	background-color: #ffffff;
+	border: 1px solid #e0e0e0;
+	border-radius: 8px;
+	transition: all 0.3s ease;
+	overflow: hidden;
+}
+
+.drive-item:hover {
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+	transform: translateY(-2px);
+}
+
+/* 리스트 뷰 스타일 */
+.drive-item:not(.grid) {
+	display: flex;
+	align-items: center;
+	padding: 15px;
+	margin-bottom: 10px;
+}
+
+.drive-item:not(.grid) .drive-item-content {
+	flex-grow: 1;
+	display: flex;
+	align-items: center;
+}
+
+.drive-item:not(.grid) .icon {
+	font-size: 1.5em;
+	margin-right: 15px;
+	color: #4285f4;
+}
+
+.drive-item:not(.grid) .drive-item-name {
+	font-weight: bold;
+	margin-right: 20px;
+	flex: 1;
+}
+
+.drive-item:not(.grid) .drive-item-details,
+.drive-item:not(.grid) .drive-item-last-modified {
+	font-size: 0.9em;
+	color: #666;
+	margin-right: 20px;
+}
+
+/* 그리드 뷰 스타일 */
+.drive-item.grid {
+	width: calc(25% - 20px);
+	margin: 10px;
+	padding: 20px;
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+}
+
+.drive-item.grid .icon {
+	font-size: 3em;
+	margin-bottom: 10px;
+	color: #4285f4;
+}
+
+.drive-item.grid .drive-item-name {
+	font-weight: bold;
+	margin-bottom: 10px;
+	word-break: break-word;
+}
+
+.drive-item.grid .drive-item-details,
+.drive-item.grid .drive-item-last-modified {
+	font-size: 0.8em;
+	color: #666;
+}
+
+/* 아이템 메뉴 스타일 */
+.item-menu {
+	display: flex;
+	gap: 10px;
+}
+
+.item-menu button {
+	background-color: #f1f3f4;
+	border: none;
+	padding: 8px 12px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.3s ease;
+	font-size: 0.9em;
+}
+
+.item-menu button:hover {
+	background-color: #e8eaed;
+}
+
+/* 로딩 및 에러 메시지 스타일 */
+.loading,
+.error {
+	text-align: center;
+	padding: 20px;
+	font-size: 1.2em;
+	color: #666;
+}
+
+.error {
+	color: #d93025;
 }

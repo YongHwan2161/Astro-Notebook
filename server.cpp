@@ -7,8 +7,6 @@
 #include <unistd.h>
 #include <sstream>
 #include <fstream>
-#include <openssl/hmac.h>
-#include <openssl/sha.h>
 #include <signal.h>
 #include <errno.h> // errno 사용을 위해
 #include <unordered_map>
@@ -24,8 +22,14 @@
 #include <random>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <openssl/hmac.h>
+#include <openssl/sha.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
+#include <chrono>
+#include <ctime>
+#include <syslog.h>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -235,6 +239,17 @@ std::string sha1(const std::string &str)
     SHA1(reinterpret_cast<const unsigned char *>(str.c_str()), str.size(), hash);
     return std::string(reinterpret_cast<char *>(hash), SHA_DIGEST_LENGTH);
 }
+std::string generate_salt(int length = 16)
+{
+    unsigned char salt[length];
+    RAND_bytes(salt, length);
+    std::stringstream ss;
+    for (int i = 0; i < length; ++i)
+    {
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)salt[i];
+    }
+    return ss.str();
+}
 std::string generate_websocket_accept_key(const std::string &client_key)
 {
     std::string magic_key = client_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -384,7 +399,74 @@ public:
 
 // 전역 변수로 연결 풀 선언
 DatabaseConnectionPool connectionPool("users.db", 10);
+// 비밀번호 해싱 함수
+std::string hash_password(const std::string &password, const std::string &salt)
+{
+    std::string salted_password = salt + password;
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, salted_password.c_str(), salted_password.length());
+    SHA256_Final(hash, &sha256);
+    std::stringstream ss;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+    {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
+    }
+    return ss.str();
+}
 
+void migrate_passwords()
+{
+    const char *sql_select = "SELECT ID, USERNAME, PASSWORD FROM USERS WHERE SALT IS NULL;";
+    const char *sql_update = "UPDATE USERS SET PASSWORD = ?, SALT = ? WHERE ID = ?;";
+    sqlite3_stmt *select_stmt, *update_stmt;
+
+    int rc = sqlite3_prepare_v2(db, sql_select, -1, &select_stmt, 0);
+    if (rc != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare select statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+
+    rc = sqlite3_prepare_v2(db, sql_update, -1, &update_stmt, 0);
+    if (rc != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare update statement: " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(select_stmt);
+        return;
+    }
+
+    while (sqlite3_step(select_stmt) == SQLITE_ROW)
+    {
+        int id = sqlite3_column_int(select_stmt, 0);
+        std::string username = reinterpret_cast<const char *>(sqlite3_column_text(select_stmt, 1));
+        std::string old_password = reinterpret_cast<const char *>(sqlite3_column_text(select_stmt, 2));
+
+        std::string salt = generate_salt();
+        std::string hashed_password = hash_password(old_password, salt);
+
+        sqlite3_bind_text(update_stmt, 1, hashed_password.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(update_stmt, 2, salt.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int(update_stmt, 3, id);
+
+        if (sqlite3_step(update_stmt) != SQLITE_DONE)
+        {
+            std::cerr << "Failed to update password for user " << username << std::endl;
+        }
+        else
+        {
+            std::cout << "Successfully migrated password for user " << username << std::endl;
+        }
+
+        sqlite3_reset(update_stmt);
+    }
+
+    sqlite3_finalize(select_stmt);
+    sqlite3_finalize(update_stmt);
+
+    std::cout << "Password migration completed." << std::endl;
+}
 // 데이터베이스 초기화 함수
 void init_database()
 {
@@ -403,7 +485,8 @@ void init_database()
         "CREATE TABLE IF NOT EXISTS USERS ("
         "ID INTEGER PRIMARY KEY AUTOINCREMENT, "
         "USERNAME TEXT NOT NULL UNIQUE, "
-        "PASSWORD TEXT NOT NULL);";
+        "PASSWORD TEXT NOT NULL, "
+        "SALT TEXT);";
 
     const char *sql_create_posts_table =
         "CREATE TABLE IF NOT EXISTS posts ("
@@ -411,7 +494,7 @@ void init_database()
         "title TEXT NOT NULL, "
         "content TEXT NOT NULL, "
         "author TEXT NOT NULL, "
-        "timestamp TEXT NOT NULL);";
+        "timestamp TEXT);";
 
     const char *sql_create_comments_table =
         "CREATE TABLE IF NOT EXISTS comments ("
@@ -497,6 +580,30 @@ void init_database()
             exit(EXIT_FAILURE);
         }
     }
+
+    // Check if we need to migrate passwords
+    const char *sql_check_salt = "SELECT COUNT(*) FROM USERS WHERE SALT IS NULL;";
+    // sqlite3_stmt *stmt;
+    rc = sqlite3_prepare_v2(db, sql_check_salt, -1, &stmt, 0);
+    if (rc != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW)
+    {
+        int count = sqlite3_column_int(stmt, 0);
+        if (count > 0)
+        {
+            std::cout << "Migrating " << count << " password(s) to new hashing scheme..." << std::endl;
+            migrate_passwords();
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    std::cout << "Database initialization completed." << std::endl;
 }
 // void init_database()
 // {
@@ -704,7 +811,7 @@ void init_database()
 // 회원가입 요청을 처리하는 함수
 void handle_signup(SSL *ssl, const std::string &body)
 {
-            sqlite3* db = connectionPool.getConnection();
+    sqlite3 *db = connectionPool.getConnection();
     auto params = parse_urlencoded(body);
     if (params.find("username") != params.end() && params.find("password") != params.end())
     {
@@ -768,24 +875,9 @@ void handle_signup(SSL *ssl, const std::string &body)
                                response_body;
         SSL_write(ssl, response.c_str(), response.length());
     }
-            connectionPool.releaseConnection(db);
+    connectionPool.releaseConnection(db);
 }
-// 비밀번호 해싱 함수
-std::string hash_password(const std::string &password, const std::string &salt)
-{
-    std::string salted_password = salt + password;
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, salted_password.c_str(), salted_password.length());
-    SHA256_Final(hash, &sha256);
-    std::stringstream ss;
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-    {
-        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
-    }
-    return ss.str();
-}
+
 // 사용자 정보를 데이터베이스에서 확인하는 함수
 bool verify_user(const std::string &username, const std::string &password)
 {
@@ -877,8 +969,8 @@ std::string create_jwt(const std::string &username, const std::string &secret_ke
 void handle_login(SSL *ssl, const std::string &body)
 {
     json response;
-    sqlite3* db = nullptr;
-    
+    sqlite3 *db = nullptr;
+
     try
     {
         json request_data = json::parse(body);
@@ -892,7 +984,8 @@ void handle_login(SSL *ssl, const std::string &body)
         std::string password = request_data["password"];
 
         db = connectionPool.getConnection();
-        if (!db) {
+        if (!db)
+        {
             throw std::runtime_error("Failed to get database connection");
         }
 
@@ -906,7 +999,7 @@ void handle_login(SSL *ssl, const std::string &body)
 
         sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
         rc = sqlite3_step(stmt);
-        
+
         if (rc == SQLITE_ROW)
         {
             std::string stored_password = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
@@ -941,7 +1034,8 @@ void handle_login(SSL *ssl, const std::string &body)
     }
 
     // 항상 연결을 해제합니다.
-    if (db) {
+    if (db)
+    {
         connectionPool.releaseConnection(db);
     }
 
@@ -960,40 +1054,48 @@ void handle_login(SSL *ssl, const std::string &body)
 }
 bool is_username_taken(const std::string &username)
 {
-    sqlite3* db = nullptr;
+    sqlite3 *db = nullptr;
     bool is_taken = false;
 
-    try {
+    try
+    {
         db = connectionPool.getConnection();
-        if (!db) {
+        if (!db)
+        {
             throw std::runtime_error("Failed to get database connection");
         }
 
         const char *sql_select = "SELECT COUNT(*) FROM USERS WHERE USERNAME = ?;";
         sqlite3_stmt *stmt;
         int rc = sqlite3_prepare_v2(db, sql_select, -1, &stmt, 0);
-        if (rc != SQLITE_OK) {
+        if (rc != SQLITE_OK)
+        {
             throw std::runtime_error(std::string("Failed to prepare statement: ") + sqlite3_errmsg(db));
         }
 
         sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
 
         rc = sqlite3_step(stmt);
-        if (rc == SQLITE_ROW) {
+        if (rc == SQLITE_ROW)
+        {
             int count = sqlite3_column_int(stmt, 0);
             is_taken = (count > 0);
-        } else {
+        }
+        else
+        {
             throw std::runtime_error(std::string("Failed to execute statement: ") + sqlite3_errmsg(db));
         }
 
         sqlite3_finalize(stmt);
     }
-    catch (const std::exception &e) {
+    catch (const std::exception &e)
+    {
         std::cerr << "Error in is_username_taken: " << e.what() << std::endl;
-        is_taken = false;  // 에러 발생 시 기본적으로 false 반환
+        is_taken = false; // 에러 발생 시 기본적으로 false 반환
     }
 
-    if (db) {
+    if (db)
+    {
         connectionPool.releaseConnection(db);
     }
 
@@ -1057,6 +1159,23 @@ void send_json_response2(SSL *ssl, int status_code, const std::string &status_me
     std::string response = response_stream.str();
     SSL_write(ssl, response.c_str(), response.length());
 }
+void send_json_response(SSL *ssl, int status_code, const std::string &status_message, const std::string &json_content)
+{
+    std::ostringstream response;
+    response << "HTTP/1.1 " << status_code << " " << status_message << "\r\n";
+    response << "Content-Type: application/json\r\n";
+    response << "Cache-Control: no-cache\r\n";
+    response << "Content-Length: " << json_content.length() << "\r\n";
+    response << "\r\n";
+    response << json_content;
+
+    std::string response_str = response.str();
+    ssize_t bytes_sent = SSL_write(ssl, response_str.c_str(), response_str.length());
+    if (bytes_sent != static_cast<ssize_t>(response_str.length()))
+    {
+        std::cerr << "Failed to send full response. Sent " << bytes_sent << " out of " << response_str.length() << " bytes." << std::endl;
+    }
+}
 // 사용자 수를 가져오는 함수
 std::pair<int, std::string> get_user_count()
 {
@@ -1084,7 +1203,7 @@ std::pair<int, std::string> get_user_count()
     {
         error_message = "Failed to prepare statement: " + std::string(sqlite3_errmsg(db));
     }
-        connectionPool.releaseConnection(db);
+    connectionPool.releaseConnection(db);
     return {user_count, error_message};
 }
 // 사용자 수 요청을 처리하는 함수
@@ -2281,22 +2400,23 @@ void handle_add_comment(SSL *ssl, const std::string &request_body)
     sqlite3_finalize(stmt);
     // close(client_socket);
 }
-void send_json_response(SSL *ssl, int status_code, const std::string &status_message, const std::string &json_content)
+std::string get_file_extension(const std::string &filename)
 {
-    std::ostringstream response;
-    response << "HTTP/1.1 " << status_code << " " << status_message << "\r\n";
-    response << "Content-Type: application/json\r\n";
-    response << "Cache-Control: no-cache\r\n";
-    response << "Content-Length: " << json_content.length() << "\r\n";
-    response << "\r\n";
-    response << json_content;
-
-    std::string response_str = response.str();
-    ssize_t bytes_sent = SSL_write(ssl, response_str.c_str(), response_str.length());
-    if (bytes_sent != static_cast<ssize_t>(response_str.length()))
+    size_t dot_pos = filename.find_last_of(".");
+    if (dot_pos != std::string::npos)
     {
-        std::cerr << "Failed to send full response. Sent " << bytes_sent << " out of " << response_str.length() << " bytes." << std::endl;
+        return filename.substr(dot_pos + 1);
     }
+    return "";
+}
+
+std::string format_iso8601(const std::chrono::system_clock::time_point &tp)
+{
+    auto tt = std::chrono::system_clock::to_time_t(tp);
+    std::tm tm = *std::gmtime(&tt);
+    std::stringstream ss;
+    ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+    return ss.str();
 }
 void handle_drive_contents(SSL *ssl, const std::string &query)
 {
@@ -2324,7 +2444,7 @@ void handle_drive_contents(SSL *ssl, const std::string &query)
     if (full_path.substr(0, root_path.length()) != root_path)
     {
         std::string error_json = "{\"error\": \"Access is not allowed\"}";
-        send_json_response(ssl, 403, "Forbidden", error_json);
+        send_json_response2(ssl, 403, "Forbidden", error_json);
         return;
     }
 
@@ -2350,10 +2470,27 @@ void handle_drive_contents(SSL *ssl, const std::string &query)
             std::string filename = json_escape(entry.path().filename().string());
             std::string type = fs::is_directory(entry) ? "folder" : "file";
 
-            json << "{\"name\":\"" << filename << "\",\"type\":\"" << type << "\"}";
+            uintmax_t size = fs::is_regular_file(entry) ? fs::file_size(entry) : 0;
+            auto last_modified = fs::last_write_time(entry);
+            auto last_modified_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                last_modified - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
 
-            // 디버깅: 각 항목 정보 출력
-            std::cerr << "Added item: " << filename << " (type: " << type << ")" << std::endl;
+            json << "{\"name\":\"" << filename << "\","
+                 << "\"type\":\"" << type << "\",";
+
+            if (type == "file")
+            {
+                json << "\"extension\":\"" << get_file_extension(filename) << "\",";
+            }
+            else
+            {
+                // For folders, count the number of items
+                uintmax_t item_count = std::distance(fs::directory_iterator(entry), fs::directory_iterator{});
+                json << "\"items_count\":" << item_count << ",";
+            }
+
+            json << "\"size\":" << size << ","
+                 << "\"last_modified\":\"" << format_iso8601(last_modified_tp) << "\"}";
         }
     }
     catch (const fs::filesystem_error &e)
@@ -2367,11 +2504,52 @@ void handle_drive_contents(SSL *ssl, const std::string &query)
     json << "]}";
 
     std::string json_str = json.str();
-
-    // 디버깅: 전송할 JSON 데이터 출력
-    std::cerr << "Sending JSON: " << json_str << std::endl;
-
     send_json_response(ssl, 200, "OK", json_str);
+
+    // std::ostringstream json;
+    // json << "{\"contents\": [";
+
+    // try
+    // {
+    //     if (!fs::exists(full_path))
+    //     {
+    //         throw fs::filesystem_error("Directory does not exist", full_path, std::error_code());
+    //     }
+
+    //     bool first = true;
+    //     for (const auto &entry : fs::directory_iterator(full_path))
+    //     {
+    //         if (!first)
+    //         {
+    //             json << ",";
+    //         }
+    //         first = false;
+
+    //         std::string filename = json_escape(entry.path().filename().string());
+    //         std::string type = fs::is_directory(entry) ? "folder" : "file";
+
+    //         json << "{\"name\":\"" << filename << "\",\"type\":\"" << type << "\"}";
+
+    //         // 디버깅: 각 항목 정보 출력
+    //         std::cerr << "Added item: " << filename << " (type: " << type << ")" << std::endl;
+    //     }
+    // }
+    // catch (const fs::filesystem_error &e)
+    // {
+    //     std::cerr << "Filesystem error: " << e.what() << std::endl;
+    //     std::string error_json = "{\"error\": \"" + json_escape(e.what()) + "\"}";
+    //     send_json_response(ssl, 500, "Internal Server Error", error_json);
+    //     return;
+    // }
+
+    // json << "]}";
+
+    // std::string json_str = json.str();
+
+    // // 디버깅: 전송할 JSON 데이터 출력
+    // std::cerr << "Sending JSON: " << json_str << std::endl;
+
+    // send_json_response(ssl, 200, "OK", json_str);
 }
 void handle_download_file(SSL *ssl, const std::string &query)
 {
@@ -2674,119 +2852,147 @@ std::unordered_map<std::string, QueryHandler> get_routes_with_query = {
     {"/download-file", handle_download_file}};
 void handle_request(SSL *ssl, const std::string &request)
 {
-    std::istringstream request_stream(request);
-    std::string method, path, version;
-    request_stream >> method >> path >> version;
-
-    std::unordered_map<std::string, std::string> headers;
-    std::string line;
-
-    // Ignore the first line (request line)
-    std::getline(request_stream, line);
-
-    // Process header lines
-    while (std::getline(request_stream, line) && line != "\r")
+    try
     {
-        size_t pos = line.find(": ");
-        if (pos != std::string::npos)
-        {
-            std::string key = line.substr(0, pos);
-            std::string value = line.substr(pos + 2, line.size() - pos - 3); // -3 to remove \r at the end
-            headers[key] = value;
-        }
-    }
+        std::istringstream request_stream(request);
+        std::string method, path, version;
+        request_stream >> method >> path >> version;
 
-    // Check for CSRF token in POST requests
-    // if (method == "POST")
-    // {
-    //     if (headers["X-Requested-With"] != "XMLHttpRequest")
-    //     {
-    //         std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nCSRF validation failed";
-    //         // send(client_socket, response.c_str(), response.length(), 0);
-    //         // send() 대신 SSL_write() 사용
-    //         SSL_write(ssl, response.c_str(), response.length());
-    //         return;
-    //     }
-    // }
+        std::unordered_map<std::string, std::string> headers;
+        std::string line;
 
-    std::string query;
-    size_t query_pos = path.find("?");
-    if (query_pos != std::string::npos)
-    {
-        query = path.substr(query_pos + 1);
-        path = path.substr(0, query_pos);
-    }
+        // Ignore the first line (request line)
+        std::getline(request_stream, line);
 
-    if (method == "GET")
-    {
-        // 쿼리를 사용하는 라우트 확인
-        auto query_route = get_routes_with_query.find(path);
-        if (query_route != get_routes_with_query.end())
+        // Process header lines
+        while (std::getline(request_stream, line) && line != "\r")
         {
-            query_route->second(ssl, query);
-        }
-        else
-        {
-            auto route = get_routes.find(path);
-            if (route != get_routes.end())
+            size_t pos = line.find(": ");
+            if (pos != std::string::npos)
             {
-                route->second(ssl);
+                std::string key = line.substr(0, pos);
+                std::string value = line.substr(pos + 2, line.size() - pos - 3); // -3 to remove \r at the end
+                headers[key] = value;
+            }
+        }
+
+        // Check for CSRF token in POST requests
+        // if (method == "POST")
+        // {
+        //     if (headers["X-Requested-With"] != "XMLHttpRequest")
+        //     {
+        //         std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nCSRF validation failed";
+        //         // send(client_socket, response.c_str(), response.length(), 0);
+        //         // send() 대신 SSL_write() 사용
+        //         SSL_write(ssl, response.c_str(), response.length());
+        //         return;
+        //     }
+        // }
+
+        std::string query;
+        size_t query_pos = path.find("?");
+        if (query_pos != std::string::npos)
+        {
+            query = path.substr(query_pos + 1);
+            path = path.substr(0, query_pos);
+        }
+
+        if (method == "GET")
+        {
+            // 쿼리를 사용하는 라우트 확인
+            auto query_route = get_routes_with_query.find(path);
+            if (query_route != get_routes_with_query.end())
+            {
+                query_route->second(ssl, query);
             }
             else
             {
-                // 정적 파일 처리
-                for (const auto &entry : static_routes)
+                auto route = get_routes.find(path);
+                if (route != get_routes.end())
                 {
-                    if (path.find(entry.first) == 0)
-                    {
-                        entry.second(ssl, path.substr(1));
-                        return;
-                    }
+                    route->second(ssl);
                 }
-                // 폰트 처리
-                if (path.find("/assets/fonts/") == 0)
+                else
                 {
-                    std::string font_path = path.substr(1);
-                    size_t query_pos = font_path.find("?");
-                    if (query_pos != std::string::npos)
+                    // 정적 파일 처리
+                    for (const auto &entry : static_routes)
                     {
-                        font_path = font_path.substr(0, query_pos);
+                        if (path.find(entry.first) == 0)
+                        {
+                            entry.second(ssl, path.substr(1));
+                            return;
+                        }
                     }
-                    std::string extension = font_path.substr(font_path.find_last_of("."));
-                    std::string content_type = get_font_content_type(extension);
-                    send_font(ssl, font_path, content_type);
-                }
-                else if (path == "/")
-                {
-                    // 기본 라우트
-                    send_html(ssl, "assets/html/index4.html");
+                    // 폰트 처리
+                    if (path.find("/assets/fonts/") == 0)
+                    {
+                        std::string font_path = path.substr(1);
+                        size_t query_pos = font_path.find("?");
+                        if (query_pos != std::string::npos)
+                        {
+                            font_path = font_path.substr(0, query_pos);
+                        }
+                        std::string extension = font_path.substr(font_path.find_last_of("."));
+                        std::string content_type = get_font_content_type(extension);
+                        send_font(ssl, font_path, content_type);
+                    }
+                    else if (path == "/")
+                    {
+                        // 기본 라우트
+                        send_html(ssl, "assets/html/index4.html");
+                    }
                 }
             }
         }
-    }
-    else if (method == "POST")
-    {
-        size_t body_start = request.find("\r\n\r\n");
-        if (body_start != std::string::npos)
+        else if (method == "POST")
         {
-            body_start += 4;
-            std::string body = request.substr(body_start);
-            auto route = post_routes.find(path);
-            if (route != post_routes.end())
+            size_t body_start = request.find("\r\n\r\n");
+            if (body_start != std::string::npos)
             {
-                route->second(ssl, body);
+                body_start += 4;
+                std::string body = request.substr(body_start);
+                auto route = post_routes.find(path);
+                if (route != post_routes.end())
+                {
+                    route->second(ssl, body);
+                }
+                else
+                {
+                    std::cerr << "No route found for POST request to " << path << std::endl;
+                }
             }
             else
             {
-                std::cerr << "No route found for POST request to " << path << std::endl;
+                std::cerr << "No body found in the POST request" << std::endl;
             }
         }
-        else
-        {
-            std::cerr << "No body found in the POST request" << std::endl;
-        }
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error handling request: " << e.what() << std::endl;
+
+        // 클라이언트에게 500 Internal Server Error 응답 보내기
+        std::string error_response = "HTTP/1.1 500 Internal Server Error\r\n"
+                                     "Content-Type: text/plain\r\n"
+                                     "Content-Length: 21\r\n"
+                                     "\r\n"
+                                     "Internal Server Error";
+        SSL_write(ssl, error_response.c_str(), error_response.length());
+    }
+    catch (...)
+    {
+        std::cerr << "Unknown error occurred while handling request" << std::endl;
+
+        // 클라이언트에게 500 Internal Server Error 응답 보내기
+        std::string error_response = "HTTP/1.1 500 Internal Server Error\r\n"
+                                     "Content-Type: text/plain\r\n"
+                                     "Content-Length: 21\r\n"
+                                     "\r\n"
+                                     "Internal Server Error";
+        SSL_write(ssl, error_response.c_str(), error_response.length());
     }
 }
+
 void handle_client_ssl(SSL *ssl)
 {
     std::string request;
@@ -2850,21 +3056,6 @@ void handle_client_ssl(SSL *ssl)
     SSL_shutdown(ssl);
     SSL_free(ssl);
 }
-// void handle_client_ssl(SSL *ssl)
-// {
-//     char buffer[BUFFER_SIZE];
-//     int bytes;
-
-//     bytes = SSL_read(ssl, buffer, sizeof(buffer));
-//     if (bytes > 0)
-//     {
-//         buffer[bytes] = 0;
-//         handle_request(ssl, std::string(buffer));
-//     }
-
-//     SSL_shutdown(ssl);
-//     SSL_free(ssl);
-// }
 SSL_CTX *create_context()
 {
     const SSL_METHOD *method;
@@ -2897,9 +3088,76 @@ void configure_context(SSL_CTX *ctx)
         exit(EXIT_FAILURE);
     }
 }
+const std::string PID_FILE = "/tmp/server.pid";
 
+bool is_process_running(pid_t pid)
+{
+    return (kill(pid, 0) == 0);
+}
+
+void write_pid_file(pid_t pid)
+{
+    std::ofstream pid_file(PID_FILE);
+    if (pid_file.is_open())
+    {
+        pid_file << pid;
+        pid_file.close();
+    }
+    else
+    {
+        std::cerr << "Unable to create PID file" << std::endl;
+    }
+}
+
+void remove_pid_file()
+{
+    if (std::remove(PID_FILE.c_str()) != 0)
+    {
+        std::cerr << "Error deleting PID file" << std::endl;
+    }
+}
+
+void terminate_existing_server()
+{
+    std::ifstream pid_file(PID_FILE);
+    if (pid_file.is_open())
+    {
+        pid_t pid;
+        pid_file >> pid;
+        pid_file.close();
+
+        if (is_process_running(pid))
+        {
+            std::cout << "Terminating existing server process (PID: " << pid << ")" << std::endl;
+            kill(pid, SIGTERM);
+            // Wait for the process to terminate
+            sleep(2);
+        }
+    }
+}
+void log_error(const std::string &message)
+{
+    std::ofstream log_file("server_error.log", std::ios_base::app);
+    if (log_file.is_open())
+    {
+        std::time_t now = std::time(nullptr);
+        log_file << std::ctime(&now) << message << std::endl;
+        log_file.close();
+    }
+    else
+    {
+        std::cerr << "Unable to open log file" << std::endl;
+    }
+    std::cerr << message << std::endl;
+}
 void start_server()
 {
+    // Terminate existing server if running
+    terminate_existing_server();
+
+    // Write current PID to file
+    write_pid_file(getpid());
+
     int server_fd;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
@@ -2944,7 +3202,18 @@ void start_server()
             perror("In accept");
             continue;
         }
+        struct timeval timeout;
+        timeout.tv_sec = 10; // 10초 타임아웃
+        timeout.tv_usec = 0;
+        if (setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
+        {
+            syslog(LOG_ERR, "setsockopt failed for SO_RCVTIMEO: %s", strerror(errno));
+        }
 
+        if (setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
+        {
+            syslog(LOG_ERR, "setsockopt failed for SO_SNDTIMEO: %s", strerror(errno));
+        }
         SSL *ssl = SSL_new(ctx);
         if (!ssl)
         {
@@ -2955,69 +3224,47 @@ void start_server()
 
         SSL_set_fd(ssl, client_socket);
 
-        if (SSL_accept(ssl) <= 0)
+        int ret;
+        do
         {
-            unsigned long err = ERR_get_error();
-            char *err_msg = ERR_error_string(err, NULL);
-            fprintf(stderr, "SSL_accept failed: %s\n", err_msg);
-
-            // 클라이언트 요청 확인
-            char buf[4096];
-            int bytes = recv(client_socket, buf, sizeof(buf) - 1, MSG_PEEK);
-            if (bytes > 0)
+            ret = SSL_accept(ssl);
+            if (ret <= 0)
             {
-                buf[bytes] = '\0'; // Null-terminate the string
-                fprintf(stderr, "Received request (%d bytes):\n%s\n", bytes, buf);
-
-                // HTTP 요청 확인
-                if (strncmp(buf, "GET ", 4) == 0 || strncmp(buf, "POST ", 5) == 0 || strncmp(buf, "HEAD ", 5) == 0)
+                int err = SSL_get_error(ssl, ret);
+                if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
                 {
-                    fprintf(stderr, "Detected HTTP request\n");
-                    // HTTP 요청에 대한 리다이렉션 또는 에러 응답
-                    const char *redirect = "HTTP/1.1 301 Moved Permanently\r\n"
-                                           "Location: https://improved-zebra-wpw5q79q7wg3559r-35500.app.github.dev\r\n"
-                                           "Content-Length: 0\r\n"
-                                           "\r\n";
-                    send(client_socket, redirect, strlen(redirect), 0);
+                    // The operation did not complete, try again
+                    continue;
                 }
-                else
-                {
-                    fprintf(stderr, "Unknown request type\n");
-                    // 알 수 없는 요청 유형에 대한 처리
-                    // const char *error_response = "HTTP/1.1 400 Bad Request\r\n"
-                    //                              "Content-Length: 11\r\n"
-                    //                              "\r\n"
-                    //                              "Bad Request";
-                    const char *redirect = "HTTP/1.1 301 Moved Permanently\r\n"
-                                           "Location: /assets/html/index4.html\r\n"
-                                           "Content-Length: 0\r\n"
-                                           "\r\n";
-                    // send(client_socket, error_response, strlen(error_response), 0);
-                    send(client_socket, redirect, strlen(redirect), 0);
-                }
+                // Other errors are treated as failure
+                char err_msg[256];
+                ERR_error_string_n(err, err_msg, sizeof(err_msg));
+                syslog(LOG_ERR, "SSL_accept failed: %s", err_msg);
+                ERR_print_errors_fp(stderr);
+                SSL_free(ssl);
+                close(client_socket);
+                break;
             }
-            else
-            {
-                fprintf(stderr, "Failed to read client request\n");
-            }
+        } while (ret <= 0);
 
-            ERR_print_errors_fp(stderr); // Print detailed OpenSSL errors
-            SSL_free(ssl);
-            close(client_socket);
-            // return; // 오류 발생 시 함수 종료
-        }
-        else
+        if (ret <= 0)
         {
-            std::thread(handle_client_ssl, ssl).detach();
+            // SSL handshake failed, continue to next connection
+            continue;
         }
+        // SSL handshake successful, start a new thread to handle the client
+        std::thread(handle_client_ssl, ssl).detach();
     }
-
+    // When server is shutting down
+    remove_pid_file();
     SSL_CTX_free(ctx);
     EVP_cleanup();
     close(server_fd);
 }
+
 int main()
 {
+        openlog("ssl_server", LOG_PID|LOG_CONS, LOG_USER);
     // SIGPIPE 시그널 무시
     signal(SIGPIPE, SIG_IGN);
     // 데이터베이스 초기화
@@ -3028,5 +3275,6 @@ int main()
     start_server();
 
     sqlite3_close(db); // 서버 종료 시 데이터베이스 연결 닫기
+    closelog();
     return 0;
 }
