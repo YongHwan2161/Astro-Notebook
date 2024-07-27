@@ -206,7 +206,7 @@ export async function load3DModel(files) {
     // quill 객체 사용 시 window.quill로 접근합니다.
     let objFile, mtlFile, textureFiles = [];
     for (let file of files) {
-        if (file.name.endsWith('.obj')) objFile = file;
+        if (file.name.endsWith('.obj')) objFile = file; 
         else if (file.name.endsWith('.mtl')) mtlFile = file;
         else if (/\.(png|jpg|jpeg)$/i.test(file.name)) textureFiles.push(file);
     }
