@@ -3,7 +3,7 @@ import * as auth from './modules/auth.js';
 import * as posts from './modules/posts.js';
 import * as drive from './modules/drive.js';
 import * as modelRenderer from './modules/modelRenderer.js';
-import { sortPosts } from './modules/posts.js';
+import { loadCategories, sortPosts } from './modules/posts.js';
 import { EditPost } from './modules/posts.js';
 
 let currentUser = null;
@@ -29,7 +29,7 @@ function onLogoutSuccess() {
 
 function initApp() {
     auth.initAuth(onLoginSuccess, onLogoutSuccess);
-    posts.initPosts(setCurrentUser);
+    posts.initPosts();
     drive.initDrive();
     modelRenderer.initModelRenderer();
 }
@@ -46,7 +46,7 @@ window.showSection = (sectionId) => {
     // Show the selected section
     document.getElementById(sectionId).classList.remove('hidden');
     if (sectionId == 'banner_project') {
-        loadPosts();  // 페이지가 로드될 때 게시글 목록을 로드
+        loadCategories();  // 페이지가 로드될 때 카테고리 목록을 로드
     } else if (sectionId == 'banner_drive') {
         //loadImage();  // 페이지가 로드될 때 게시글 목록을 로드
         drive.loadDriveContent();

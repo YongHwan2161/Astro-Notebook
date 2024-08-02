@@ -7,11 +7,17 @@ import { createProgressBar, removeProgressBar, fetchWithProgress } from './progr
 let currentUser = null;
 const Quill = window.Quill;
 let quill;
-export function initPosts(setCurrentUser) {
+let currentCategory = '';
+let currentSortColumn = 'timestamp'; // 기본 정렬 컬럼
+let currentSortOrder = 'desc'; // 기본 정렬 순서
+let postsData = []; // 전체 게시글 데이터를 저장할 배열
+
+export function initPosts() {
     // 게시글 관련 초기화 코드
     document.getElementById('comment-form').addEventListener('submit', submitComment);
 }
 export async function loadPosts(category) {
+    currentCategory = category;
     const postsContainer = document.getElementById('posts-container');
     postsContainer.innerHTML = `
         <tr>
@@ -27,9 +33,10 @@ export async function loadPosts(category) {
         if (!response.ok) {
             throw new Error('Failed to fetch posts');
         }
-        const posts = await response.json();
+        // const posts = await response.json();
+        postsData = await response.json();
 
-        if (posts.length === 0) {
+        if (postsData.length === 0) {
             postsContainer.innerHTML = `
                 <tr>
                     <td colspan="4" class="text-center py-4">No posts found in this category.</td>
@@ -38,7 +45,7 @@ export async function loadPosts(category) {
             return;
         }
 
-        renderPosts(posts);
+        renderPosts(postsData);
     } catch (error) {
         console.error('Error:', error);
         postsContainer.innerHTML = `
@@ -732,10 +739,6 @@ export function deleteComment(commentId) {
             });
     }
 }
-let currentSortColumn = 'timestamp'; // 기본 정렬 컬럼
-let currentSortOrder = 'desc'; // 기본 정렬 순서
-let postsData = []; // 전체 게시글 데이터를 저장할 배열
-
 export function sortPosts(column) {
     if (column === currentSortColumn) {
         // 같은 컬럼을 다시 클릭하면 정렬 순서를 변경
