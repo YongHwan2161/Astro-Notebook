@@ -3208,7 +3208,7 @@ void configure_context(SSL_CTX *ctx)
         exit(EXIT_FAILURE);
     }
 }
-const std::string PID_FILE = "/tmp/server.pid";
+const std::string PID_FILE = "./server.pid";
 
 bool is_process_running(pid_t pid)
 {

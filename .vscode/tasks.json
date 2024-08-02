@@ -28,29 +28,29 @@
         "isDefault": true
       },
       "detail": "디버거에서 생성된 작업입니다."
-    },
-    {
-      "type": "cppbuild",
-      "label": "C/C++: gcc 활성 파일 빌드",
-      "command": "/usr/bin/gcc",
-      "args": [
-        "-fdiagnostics-color=always",
-        "-g",
-        "${file}",
-        "${fileDirname}/cJSON.c", // cJSON.c 파일을 명시적으로 포함
-        "-o",
-        "${fileDirname}/${fileBasenameNoExtension}",
-        "-lm"
-      ],
-      "options": {
-        "cwd": "${fileDirname}"
-      },
-      "problemMatcher": ["$gcc"],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "detail": "C 파일을 위한 컴파일러: /usr/bin/gcc (cJSON 포함)"
     }
+    // {
+    //   "type": "cppbuild",
+    //   "label": "C/C++: gcc 활성 파일 빌드",
+    //   "command": "/usr/bin/gcc",
+    //   "args": [
+    //     "-fdiagnostics-color=always",
+    //     "-g",
+    //     "${file}",
+    //     "${fileDirname}/cJSON.c", // cJSON.c 파일을 명시적으로 포함
+    //     "-o",
+    //     "${fileDirname}/${fileBasenameNoExtension}",
+    //     "-lm"
+    //   ],
+    //   "options": {
+    //     "cwd": "${fileDirname}"
+    //   },
+    //   "problemMatcher": ["$gcc"],
+    //   "group": {
+    //     "kind": "build",
+    //     "isDefault": true
+    //   },
+    //   "detail": "C 파일을 위한 컴파일러: /usr/bin/gcc (cJSON 포함)"
+    // }
   ]
 }
