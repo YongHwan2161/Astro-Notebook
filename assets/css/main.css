@@ -5015,3 +5015,84 @@ body.is-mobile .banner>article {
 .error {
 	color: #d93025;
 }
+.reset-button-style {
+	all: unset;
+	cursor: pointer;
+}
+.sort-button {
+	display: inline-block;
+	font-size: 0.8em;
+	margin-left: 5px;
+	color: #718096;
+	transition: color 0.2s;
+}
+.sort-button:hover {
+	color: #2D3748;
+}
+.sort-button.active {
+	color: #4299E1;
+}
+
+
+.file-list-container {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    margin-top: 10px;
+}
+
+.file-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+.file-list li {
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-list a {
+    color: #0066cc;
+    text-decoration: none;
+    flex-grow: 1;
+}
+
+.file-list a:hover {
+    text-decoration: underline;
+}
+
+.file-size {
+    color: #666;
+    font-size: 0.9em;
+    margin-left: 10px;
+}
+
+.download-all-button, .close-button {
+    background-color: #4CAF50;
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+.close-button {
+    background-color: #f44336;
+}
+
+.download-all-button:hover {
+    background-color: #45a049;
+}
+
+.close-button:hover {
+    background-color: #d32f2f;
+}

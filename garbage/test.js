@@ -1,195 +1,195 @@
-import { GLTFLoader } from './three/loaders/GLTFLoader.js';
-import { FBXLoader } from './three/loaders/FBXLoader.js';
+import * as THREE from './three/three.module.js';
+import { OrbitControls } from './three/controls/OrbitControls.js';
+import { OBJLoader } from './three/loaders/OBJLoader.js';
+import { MTLLoader } from './three/loaders/MTLLoader.js';
 import { STLLoader } from './three/loaders/STLLoader.js';
-import { ColladaLoader } from './three/loaders/ColladaLoader.js';
-import { PLYLoader } from './three/loaders/PLYLoader.js';
-import { TDSLoader } from './three/loaders/TDSLoader.js';
 
-// ... existing imports ...
-
-export function select3DFile() {
-    var input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = '.obj,.mtl,.gltf,.glb,.fbx,.stl,.dae,.ply,.3ds,.png,.jpg,.jpeg';
-    input.onchange = function (event) {
-        var files = event.target.files;
-        if (files.length > 0) {
-            load3DModel(files);
-        }
-    };
-    input.click();
+export function initModelRenderer() {
+    // 초기화 코드 (필요한 경우)
 }
 
-export async function load3DModel(files) {
-    let modelFile, materialFile, textureFiles = [];
-    for (let file of files) {
-        const extension = file.name.split('.').pop().toLowerCase();
-        if (['obj', 'gltf', 'glb', 'fbx', 'stl', 'dae', 'ply', '3ds'].includes(extension)) {
-            modelFile = file;
-        } else if (extension === 'mtl') {
-            materialFile = file;
-        } else if (['png', 'jpg', 'jpeg'].includes(extension)) {
-            textureFiles.push(file);
-        }
+export function render3DModel(canvas, modelData, mtlData, textureData, isUrl = false, modelType = 'obj') {
+    // render3DModel 함수 구현
+    console.log('Render3DModel called with:', {
+        modelData: modelData ? modelData.substring(0, 100) + '...' : 'None',
+        mtlData: mtlData ? mtlData.substring(0, 100) + '...' : 'None',
+        textureData: textureData,
+        isUrl: isUrl,
+        modelType: modelType
+    });
+
+    let animationFrameId;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.setClearColor(0xcccccc);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.25;
+    controls.screenSpacePanning = false;
+    controls.maxPolarAngle = Math.PI / 2;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(1, 1, 1).normalize();
+    scene.add(directionalLight);
+
+    let loader;
+    if (modelType === 'obj') {
+        loader = new OBJLoader();
+    } else if (modelType === 'stl') {
+        loader = new STLLoader();
     }
-
-    if (!modelFile) {
-        alert('Please select a 3D model file.');
-        return;
-    }
-
-    try {
-        const modelContent = await readFile(modelFile);
-        let materialContent = null;
-        if (materialFile) {
-            materialContent = await readFile(materialFile);
-        }
-        let textureContents = [];
-        for (let textureFile of textureFiles) {
-            const textureContent = await readFile(textureFile, 'dataURL');
-            textureContents.push({
-                name: textureFile.name,
-                content: textureContent
-            });
-        }
-
-        // Create a container for the canvas
-        var canvasContainer = document.createElement('div');
-        canvasContainer.style.width = '100%';
-        canvasContainer.style.height = '400px';
-        canvasContainer.style.position = 'relative';
-        canvasContainer.style.background = '#f0f0f0';
-        canvasContainer.style.marginTop = '10px';
-
-        // Set attributes for model file
-        canvasContainer.setAttribute('data-model-file', modelContent);
-        canvasContainer.setAttribute('data-model-filename', modelFile.name);
-
-        // Set attributes for material file if exists
-        if (materialContent) {
-            canvasContainer.setAttribute('data-material-file', materialContent);
-            canvasContainer.setAttribute('data-material-filename', materialFile.name);
-        }
-
-        // Set attributes for texture files
-        if (textureContents.length > 0) {
-            canvasContainer.setAttribute('data-texture-files', JSON.stringify(textureContents));
-        }
-
-        // Create a canvas element to render the 3D model
-        var canvas = document.createElement('canvas');
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvasContainer.appendChild(canvas);
-
-        // Create a block blot for the canvas container
-        var Block = Quill.import('blots/block/embed');
-        class CanvasBlot extends Block {
-            static create(value) {
-                let node = super.create();
-                Object.keys(value).forEach(key => {
-                    if (key === 'style') {
-                        node.setAttribute('style', value[key]);
-                    } else if (key === 'data-texture-files') {
-                        node.setAttribute(key, JSON.stringify(value[key]));
-                    } else {
-                        node.setAttribute(key, value[key]);
-                    }
-                });
-                node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
-                return node;
-            }
-            static value(node) {
-                const attrs = node.attributes;
-                const value = {};
-                for (let i = 0; i < attrs.length; i++) {
-                    if (attrs[i].name === 'data-texture-files') {
-                        value[attrs[i].name] = JSON.parse(attrs[i].value);
-                    } else {
-                        value[attrs[i].name] = attrs[i].value;
-                    }
-                }
-                return value;
-            }
-        }
-        CanvasBlot.blotName = 'canvas';
-        CanvasBlot.tagName = 'div';
-        Quill.register(CanvasBlot);
-
-        // Insert the canvas container as a block blot
-        var range = quill.getSelection(true);
-        quill.insertEmbed(range.index, 'canvas', {
-            style: canvasContainer.getAttribute('style'),
-            'data-model-file': modelContent,
-            'data-model-filename': modelFile.name,
-            'data-material-file': materialContent || '',
-            'data-material-filename': materialFile ? materialFile.name : '',
-            'data-texture-files': textureContents
-        });
-
-        // 3D model rendering
-        setTimeout(() => {
-            var canvasElements = document.querySelectorAll('canvas');
-            var lastCanvas = canvasElements[canvasElements.length - 1];
-            render3DModel(lastCanvas, modelContent, materialContent, textureContents, false);
-        }, 100);
-    } catch (error) {
-        console.error('Error processing files:', error);
-        alert('Failed to process files: ' + error.message);
-    }
-}
-
-export function render3DModel(canvas, modelData, materialData, textureData, isUrl = false) {
-    // ... existing code ...
-
-    const loader = getLoader(modelData);
     const textureLoader = new THREE.TextureLoader();
 
-    function loadModel() {
+    function loadMtl() {
         return new Promise((resolve, reject) => {
-            if (isUrl) {
-                loader.load(modelData,
-                    (object) => resolve(object),
-                    onProgress,
-                    (error) => reject(new Error('Failed to load model: ' + error.message))
-                );
+            if (mtlData && modelType === 'obj') {
+                const mtlLoader = new MTLLoader();
+                mtlLoader.setMaterialOptions({ side: THREE.DoubleSide });
+                if (isUrl) {
+                    mtlLoader.load(mtlData,
+                        (materials) => {
+                            console.log('MTL loaded successfully', materials);
+                            materials.preload();
+                            logMaterials(materials.materials);
+                            loader.setMaterials(materials);
+                            resolve(materials);
+                        },
+                        undefined,
+                        (error) => reject(new Error('Failed to load MTL: ' + error.message))
+                    );
+                } else {
+                    try {
+                        const materialsCreator = mtlLoader.parse(mtlData);
+                        materialsCreator.preload();
+                        logMaterials(materialsCreator.materials);
+                        loader.setMaterials(materialsCreator);
+                        console.log('MTL parsed successfully', materialsCreator);
+                        resolve(materialsCreator);
+                    } catch (error) {
+                        reject(new Error('Failed to parse MTL: ' + error.message));
+                    }
+                }
             } else {
-                const modelBlob = new Blob([modelData], { type: 'application/octet-stream' });
+                console.log('No MTL data provided or not applicable for STL');
+                resolve(null);
+            }
+        });
+    }
+
+    function loadModel(materials) {
+        return new Promise((resolve, reject) => {
+            const onLoad = (object) => {
+                console.log('Model loaded successfully:', object);
+                if (modelType === 'obj') {
+                    object.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            console.log('Mesh found:', child.name);
+                            console.log('Material:', child.material);
+                            if (child.material.map) {
+                                console.log('Material has texture map:', child.material.map.name);
+                            } else {
+                                console.log('Material does not have texture map');
+                            }
+                            // Ensure the material is MeshPhongMaterial
+                            if (!(child.material instanceof THREE.MeshPhongMaterial)) {
+                                child.material = new THREE.MeshPhongMaterial({
+                                    color: child.material.color,
+                                    map: child.material.map,
+                                    normalMap: child.material.normalMap,
+                                    specularMap: child.material.specularMap
+                                });
+                            }
+                            child.material.needsUpdate = true;
+                        }
+                    });
+                } else if (modelType === 'stl') {
+                    // STL files typically come as a single mesh
+                    const material = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+                    const mesh = new THREE.Mesh(object, material);
+                    object = new THREE.Group();
+                    object.add(mesh);
+                }
+                resolve(object);
+            };
+
+            if (isUrl) {
+                loader.load(modelData, onLoad, onProgress,
+                    (error) => reject(new Error(`Failed to load ${modelType.toUpperCase()}: ` + error.message)));
+            } else {
+                const modelBlob = new Blob([modelData], { type: 'text/plain' });
                 const modelUrl = URL.createObjectURL(modelBlob);
                 loader.load(modelUrl, (object) => {
                     URL.revokeObjectURL(modelUrl);
-                    resolve(object);
+                    onLoad(object);
                 }, onProgress,
-                    (error) => reject(new Error('Failed to load model: ' + error.message)));
+                    (error) => reject(new Error(`Failed to load ${modelType.toUpperCase()}: ` + error.message)));
             }
         });
     }
 
-    // ... rest of the existing code ...
-}
-
-function getLoader(modelData) {
-    const extension = modelData.name ? modelData.name.split('.').pop().toLowerCase() : 'obj';
-    switch (extension) {
-        case 'obj':
-            return new OBJLoader();
-        case 'gltf':
-        case 'glb':
-            return new GLTFLoader();
-        case 'fbx':
-            return new FBXLoader();
-        case 'stl':
-            return new STLLoader();
-        case 'dae':
-            return new ColladaLoader();
-        case 'ply':
-            return new PLYLoader();
-        case '3ds':
-            return new TDSLoader();
-        default:
-            throw new Error('Unsupported file format: ' + extension);
+    function loadTextures() {
+        // loadTextures 함수 구현 (변경 없음)
     }
-}
 
-// ... rest of the existing code ...
+    loadMtl()
+        .then(materials => {
+            console.log('MTL loading completed, starting model and texture loading');
+            return Promise.all([loadModel(materials), loadTextures()]);
+        })
+        .then(([object, textures]) => {
+            console.log('Model and textures loaded, applying textures');
+            console.log('Loaded textures:', textures);
+            applyTextures(object, textures);
+            scene.add(object);
+            console.log('Object added to scene with textures');
+            fitCameraToObject(camera, object, controls);
+            console.log('Scene contents:', scene.children);
+            animate();
+        })
+        .catch((error) => {
+            console.error('Error in render3DModel:', error.message);
+            canvas.parentNode.textContent = 'Error rendering 3D model: ' + error.message;
+        });
+
+    function applyTextures(object, textures) {
+        // applyTextures 함수 구현 (변경 없음)
+    }
+
+    function onProgress(xhr) {
+        // onProgress 함수 구현 (변경 없음)
+    }
+
+    function animate() {
+        animationFrameId = requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    function fitCameraToObject(camera, object, controls) {
+        // fitCameraToObject 함수 구현 (변경 없음)
+    }
+
+    function logMaterials(materials) {
+        // logMaterials 함수 구현 (변경 없음)
+    }
+
+    window.addEventListener('resize', onWindowResize);
+
+    function onWindowResize() {
+        camera.aspect = canvas.clientWidth / canvas.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    }
+
+    return () => {
+        cancelAnimationFrame(animationFrameId);
+        window.removeEventListener('resize', onWindowResize);
+        // 필요한 경우 다른 정리 작업 수행
+    };
+}

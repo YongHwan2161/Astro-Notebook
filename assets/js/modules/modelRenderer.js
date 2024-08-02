@@ -4,514 +4,388 @@ import * as THREE from './three/three.module.js';
 import { OrbitControls } from './three/controls/OrbitControls.js';
 import { OBJLoader } from './three/loaders/OBJLoader.js';
 import { MTLLoader } from './three/loaders/MTLLoader.js';
+import { STLLoader } from './three/loaders/STLLoader.js';
+import { load3DModel } from './posts.js';
 
-export function initModelRenderer() {
-    // 초기화 코드 (필요한 경우)
-
-}
-export function render3DModel(canvas, objData, mtlData, textureData, isUrl = false) {
+export function render3DModel(canvas, modelData, mtlData, textureData, isUrl = false, modelType = 'obj') {
+    // render3DModel 함수 구현
     console.log('Render3DModel called with:', {
-        objData: objData ? (isUrl ? objData : objData.substring(0, 100) + '...') : 'None',
-        mtlData: mtlData ? (isUrl ? mtlData : mtlData.substring(0, 100) + '...') : 'None',
-        textureData: isUrl ? textureData : textureData.map(t => t.name),
-        isUrl: isUrl
+        modelData: modelData ? modelData.substring(0, 100) + '...' : 'None',
+        mtlData: mtlData ? mtlData.substring(0, 100) + '...' : 'None',
+        textureData: JSON.stringify(textureData, null, 2),
+        isUrl: isUrl,
+        modelType: modelType
     });
 
-    const renderer = initRenderer(canvas);
+    let animationFrameId;
+
     const scene = new THREE.Scene();
-    const camera = initCamera(canvas);
-    const controls = initControls(camera, renderer);
-
-    addLights(scene);
-
-    loadModel(objData, mtlData, textureData, isUrl)
-        .then(object => {
-            addObjectToScene(scene, object);
-            fitCameraToObject(camera, object, controls);
-            animate(renderer, scene, camera, controls);
-        })
-        .catch(error => {
-            console.error('Error rendering 3D model:', error);
-            showErrorMessage(canvas, error.message);
-        });
-
-    window.addEventListener('resize', () => onWindowResize(camera, renderer), false);
-
-    return () => {
-        window.removeEventListener('resize', onWindowResize);
-        renderer.dispose();
-    };
-}
-
-function initRenderer(canvas) {
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     renderer.setClearColor(0xcccccc);
-    return renderer;
-}
 
-function initCamera(canvas) {
-    const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
-    camera.position.z = 5;
-    return camera;
-}
-
-function initControls(camera, renderer) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
     controls.screenSpacePanning = false;
     controls.maxPolarAngle = Math.PI / 2;
-    return controls;
-}
 
-function addLights(scene) {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(1, 1, 1).normalize();
     scene.add(directionalLight);
-}
 
-async function loadModel(objData, mtlData, textureData, isUrl) {
-    const loader = new OBJLoader();
-    const materials = await loadMtl(mtlData, isUrl);
-    if (materials) {
-        loader.setMaterials(materials);
+    let loader;
+    if (modelType === 'obj') {
+        loader = new OBJLoader();
+    } else if (modelType === 'stl') {
+        loader = new STLLoader();
+    } else {
+        throw new Error('Unsupported model type: ' + modelType);
     }
-    const object = await loadObj(loader, objData, isUrl);
-    await applyTextures(object, textureData, isUrl);
-    return object;
-}
-
-function loadMtl(mtlData, isUrl) {
-    if (!mtlData) return null;
-    const mtlLoader = new MTLLoader();
-    mtlLoader.setMaterialOptions({ side: THREE.DoubleSide });
-    return new Promise((resolve, reject) => {
-        if (isUrl) {
-            mtlLoader.load(mtlData, resolve, undefined, reject);
-        } else {
-            try {
-                const materials = mtlLoader.parse(mtlData);
-                resolve(materials);
-            } catch (error) {
-                reject(error);
-            }
-        }
-    });
-}
-
-function loadObj(loader, objData, isUrl) {
-    return new Promise((resolve, reject) => {
-        const onLoad = object => {
-            object.traverse(child => {
-                if (child instanceof THREE.Mesh) {
-                    child.material = new THREE.MeshPhongMaterial({
-                        color: child.material.color,
-                        map: child.material.map,
-                        normalMap: child.material.normalMap,
-                        specularMap: child.material.specularMap
-                    });
-                }
-            });
-            resolve(object);
-        };
-        if (isUrl) {
-            loader.load(objData, onLoad, undefined, reject);
-        } else {
-            const objBlob = new Blob([objData], { type: 'text/plain' });
-            const objUrl = URL.createObjectURL(objBlob);
-            loader.load(objUrl, object => {
-                URL.revokeObjectURL(objUrl);
-                onLoad(object);
-            }, undefined, reject);
-        }
-    });
-}
-async function applyTextures(object, textureData, isUrl) {
-    const textureLoader = new THREE.TextureLoader();
-    const loadTexture = (textureUrl, textureName) => new Promise((resolve) => {
-        textureLoader.load(
-            textureUrl,
-            (texture) => resolve({ name: textureName, texture: texture }),
-            undefined,
-            (error) => {
-                console.error(`Failed to load texture ${textureName}:`, error);
-                resolve({ name: textureName, texture: null });
-            }
-        );
-    });
-
-    const textures = await Promise.all(textureData.map(async (texture) => {
-        const textureName = isUrl ? texture : texture.name;
-        const textureUrl = isUrl ? texture : texture.content;
+    async function renderModel() {
         try {
-            return await loadTexture(textureUrl, textureName);
+            let object;
+            if (modelType === 'obj') {
+                const materials = await loadMtl();
+                console.log('MTL loading completed, starting OBJ and texture loading');
+                const [loadedObject, textures] = await Promise.all([loadModel(materials), loadTextures()]);
+                //console.log('Model loaded:', JSON.stringify(loadedObject, null, 2));
+                console.log('Textures loaded:', JSON.stringify(textures, null, 2));
+
+                applyTextures(loadedObject, textures);
+                object = loadedObject;
+            } else if (modelType === 'stl') {
+                console.log('Starting STL loading');
+                object = await loadModel(null); // null을 전달하거나 기본 재질을 전달
+                console.log('STL loaded');
+
+            } else {
+                throw new Error('Unsupported model type: ' + modelType);
+            }
+
+            scene.add(object);
+            console.log('Object added to scene');
+            fitCameraToObject(camera, object, controls);
+            console.log('Scene contents:', scene.children);
+            animate();
         } catch (error) {
-            console.error(`Error processing texture ${textureName}:`, error);
-            return { name: textureName, texture: null };
+            console.error('Error in render3DModel:', error.message);
+            canvas.parentNode.textContent = 'Error rendering 3D model: ' + error.message;
         }
-    }));
-
-    object.traverse(child => {
-        if (child instanceof THREE.Mesh) {
-            textures.forEach(tex => {
-                if (tex.texture) {
-                    applyTextureToMaterial(child.material, tex);
+    }
+    function loadMtl() {
+        return new Promise((resolve, reject) => {
+            if (mtlData && modelType === 'obj') {
+                const mtlLoader = new MTLLoader();
+                mtlLoader.setMaterialOptions({ side: THREE.DoubleSide });
+                if (isUrl) {
+                    mtlLoader.load(mtlData,
+                        (materials) => {
+                            console.log('MTL loaded successfully', materials);
+                            materials.preload();
+                            logMaterials(materials.materials);
+                            loader.setMaterials(materials);
+                            resolve(materials);
+                        },
+                        undefined,
+                        (error) => reject(new Error('Failed to load MTL: ' + error.message))
+                    );
+                } else {
+                    try {
+                        const materialsCreator = mtlLoader.parse(mtlData);
+                        materialsCreator.preload();
+                        logMaterials(materialsCreator.materials);
+                        loader.setMaterials(materialsCreator);
+                        console.log('MTL parsed successfully', materialsCreator);
+                        resolve(materialsCreator);
+                    } catch (error) {
+                        reject(new Error('Failed to parse MTL: ' + error.message));
+                    }
                 }
-            });
-            child.material.needsUpdate = true;
+            } else {
+                console.log('No MTL data provided or not applicable for STL');
+                resolve(null);
+            }
+        });
+    }
+    function loadModel(materials) {
+        return new Promise((resolve, reject) => {
+            const onLoad = (object) => {
+                console.log('Model loaded successfully:', object);
+                if (modelType === 'obj') {
+                    object.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            console.log('Mesh found:', child.name);
+                            if (materials && materials.materials[child.material.name]) {
+                                child.material = materials.materials[child.material.name];
+                                console.log('Applied material from MTL:', child.material.name);
+                            } else {
+                                console.log('Material not found in MTL, using default');
+                                child.material = new THREE.MeshPhongMaterial({
+                                    color: child.material.color,
+                                    map: child.material.map,
+                                    normalMap: child.material.normalMap,
+                                    specularMap: child.material.specularMap
+                                });
+                            }
+                            console.log('Material:', child.material);
+                            if (child.material.map) {
+                                console.log('Material has texture map:', child.material.map.name);
+                            } else {
+                                console.log('Material does not have texture map');
+                            }
+                            child.material.needsUpdate = true;
+                        }
+                    });
+                } else if (modelType === 'stl') {
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0x555555,
+                        specular: 0x111111,
+                        shininess: 200
+                    });
+                    let mesh;
+                    if (object instanceof THREE.BufferGeometry) {
+                        mesh = new THREE.Mesh(object, material);
+                    } else {
+                        mesh = object;
+                        mesh.material = material;
+                    }
+                    // 객체 크기 정규화
+                    const box = new THREE.Box3().setFromObject(mesh);
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    mesh.scale.multiplyScalar(1 / maxDim);
+                    mesh.position.set(0, 0, 0);
+
+                    object = new THREE.Group();
+                    object.add(mesh);
+                }
+                resolve(object);
+            };
+
+            if (isUrl) {
+                if (modelType === 'obj' && materials) {
+                    loader.setMaterials(materials);
+                }
+                loader.load(modelData, onLoad, onProgress,
+                    (error) => reject(new Error(`Failed to load ${modelType.toUpperCase()}: ` + error.message)));
+            } else {
+                if (modelType === 'stl') {
+                    // STL 파일의 경우, modelData가 이미 ArrayBuffer 형태라고 가정
+                    try {
+                        // base64 문자열을 ArrayBuffer로 변환
+                        if (typeof modelData === 'string') {
+                            const binary = atob(modelData);
+                            const len = binary.length;
+                            const bytes = new Uint8Array(len);
+                            for (let i = 0; i < len; i++) {
+                                bytes[i] = binary.charCodeAt(i);
+                            }
+                            modelData = bytes.buffer;
+                        }
+
+                        // ArrayBuffer 확인
+                        if (!(modelData instanceof ArrayBuffer)) {
+                            throw new Error('STL data is not in ArrayBuffer format');
+                        }
+
+                        const geometry = loader.parse(modelData);
+                        onLoad(geometry);
+                    } catch (error) {
+                        reject(new Error(`Failed to parse STL data: ${error.message}`));
+                    }
+                } else {
+                    const modelBlob = new Blob([modelData], { type: 'text/plain' });
+                    const modelUrl = URL.createObjectURL(modelBlob);
+                    if (modelType === 'obj' && materials) {
+                        loader.setMaterials(materials);
+                    }
+                    loader.load(modelUrl, (object) => {
+                        URL.revokeObjectURL(modelUrl);
+                        onLoad(object);
+                    }, onProgress,
+                        (error) => reject(new Error(`Failed to load ${modelType.toUpperCase()}: ` + error.message)));
+                }
+            }
+        });
+    }
+    function loadTexture(textureUrl, textureName) {
+        return new Promise((resolve, reject) => {
+            const loader = new THREE.TextureLoader();
+            loader.setCrossOrigin('anonymous');
+
+            console.log('textureUrl: ', textureUrl);
+
+            // const texture = loader.load(
+            //     '/' + textureUrl,
+            //     (loadedTexture) => {
+            //         console.log(`Texture ${textureName} loaded successfully:`, loadedTexture);
+            //         resolve({ name: textureName, texture: loadedTexture, url: textureUrl });
+            //     },
+            //     (xhr) => {
+            //         console.log(`${textureName} ${(xhr.loaded / xhr.total * 100)}% loaded`);
+            //     },
+            //     (error) => {
+            //         console.error(`Failed to load texture ${textureName}: ${error.message}`);
+            //         console.error('Error details:', error);
+            //         reject({ name: textureName, texture: null, url: textureUrl, error: error.message });
+            //     }
+            // );
+            const texture = loader.load(
+                '/' + textureUrl,
+                (loadedTexture) => {
+                    console.log(`Texture ${textureName} loaded successfully:`, loadedTexture);
+
+                    // 이미지 데이터 확인
+                    if (loadedTexture.image) {
+                        console.log(`Texture ${textureName} image details:\n${JSON.stringify({
+                            width: loadedTexture.image.width,
+                            height: loadedTexture.image.height,
+                            complete: loadedTexture.image.complete,
+                            src: loadedTexture.image.src
+                        }, null, 2)}`);
+
+                        //이미지 데이터를 캔버스에 그려서 픽셀 데이터 확인
+                        // const canvas = document.createElement('canvastest');
+                        // const ctx = canvas.getContext('2d');
+                        // canvas.width = loadedTexture.image.width;
+                        // canvas.height = loadedTexture.image.height;
+                        // ctx.drawImage(loadedTexture.image, 0, 0);
+
+                        // try {
+                        //     const imageData = ctx.getImageData(0, 0, 1, 1);  // 첫 번째 픽셀의 데이터만 가져옴
+                        //     console.log(`First pixel data of ${textureName}:\n${JSON.stringify(Array.from(imageData.data), null, 2)}`);
+                        // } catch (e) {
+                        //     console.error(`Unable to get pixel data for ${textureName}: ${e.message}`);
+                        // }
+                    } else {
+                        console.warn(`Texture ${textureName} does not have image data`);
+                    }
+
+                    resolve({ name: textureName, texture: loadedTexture, url: textureUrl });
+                },
+                (xhr) => {
+                    console.log(`${textureName} ${(xhr.loaded / xhr.total * 100)}% loaded`);
+                },
+                (error) => {
+                    console.error(`Failed to load texture ${textureName}: ${error.message}`);
+                    console.error('Error details:', error);
+                    reject({ name: textureName, texture: null, url: textureUrl, error: error.message });
+                }
+            );
+            // 텍스처 객체를 즉시 반환하므로, 여기서 필요한 초기 설정을 할 수 있습니다.
+            texture.name = textureName;
+        });
+    }
+
+    function loadTextures() {
+        console.log('Loading textures:', JSON.stringify(textureData, null, 2));
+        return Promise.all(textureData.map(texture => {
+            const textureName = isUrl ? texture.name : texture.name;
+            const textureUrl = isUrl ? texture.url.url : texture.content;
+            console.log(`Attempting to load texture: ${textureName} from ${textureUrl}`);
+
+            return loadTexture(textureUrl, textureName);
+        }));
+    }
+
+    renderModel();
+
+    function applyTextures(object, textures) {
+        object.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                const material = child.material;
+                console.log('Applying textures to material:', material.name);
+
+                textures.forEach(tex => {
+                    if (tex.texture) {
+                        const textureName = tex.name.toLowerCase();
+                        console.log(`Processing texture: ${textureName}, URL: ${tex.url}`);
+
+                        // URL에서 텍스처 유형을 추측
+                        const isColor = tex.url.includes('color') || tex.url.includes('diffuse');
+                        const isNormal = tex.url.includes('normal') || tex.url.includes('bump');
+                        const isSpecular = tex.url.includes('specular');
+
+                        if (isColor || textureName.includes('diffuse') || textureName.includes('color')) {
+                            material.map = tex.texture;
+                            console.log('Applied diffuse/color map:', textureName);
+                        } else if (isNormal || textureName.includes('bump') || textureName.includes('normal')) {
+                            material.normalMap = tex.texture;
+                            console.log('Applied normal/bump map:', textureName);
+                        } else if (isSpecular || textureName.includes('specular')) {
+                            material.specularMap = tex.texture;
+                            console.log('Applied specular map:', textureName);
+                        } else {
+                            console.log(`Unrecognized texture type: ${textureName}`);
+                        }
+                    } else if (tex.error) {
+                        console.warn(`Texture ${tex.name} failed to load: ${tex.error}`);
+                    }
+                });
+
+                material.needsUpdate = true;
+                //console.log('Updated material:', JSON.stringify(material.toJSON(), null, 2));
+            }
+        });
+    }
+    function onProgress(xhr) {
+        // onProgress 함수 구현
+        //console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    }
+
+    function animate() {
+        animationFrameId = requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    function fitCameraToObject(camera, object, controls) {
+        // fitCameraToObject 함수 구현
+        const box = new THREE.Box3().setFromObject(object);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fov = camera.fov * (Math.PI / 180);
+        let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+        cameraZ *= 1.5;
+        camera.position.z = cameraZ;
+        const minZ = box.min.z;
+        const cameraToFarEdge = (minZ < 0) ? -minZ + cameraZ : cameraZ - minZ;
+        camera.far = cameraToFarEdge * 3;
+        camera.updateProjectionMatrix();
+        if (controls) {
+            controls.target = center;
+            controls.maxDistance = cameraToFarEdge * 2;
         }
-    });
-}
-
-function applyTextureToMaterial(material, tex) {
-    const textureName = tex.name.toLowerCase();
-    if (textureName.includes('diffuse') || textureName.includes('color')) {
-        material.map = tex.texture;
-    } else if (textureName.includes('bump') || textureName.includes('normal')) {
-        material.normalMap = tex.texture;
-    } else if (textureName.includes('specular')) {
-        material.specularMap = tex.texture;
+        console.log('Camera fitted to object:', { position: camera.position, target: controls.target });
     }
-    // 텍스처가 적용되었음을 로그로 남깁니다.
-    console.log(`Applied texture ${tex.name} to material`);
-}
-// async function applyTextures(object, textureData, isUrl) {
-//     const textureLoader = new THREE.TextureLoader();
-//     const loadTexture = (textureUrl) => new Promise((resolve, reject) => {
-//         textureLoader.load(textureUrl, resolve, undefined, reject);
-//     });
-
-//     const textures = await Promise.all(textureData.map(async texture => {
-//         const textureUrl = isUrl ? texture : texture.content;
-//         try {
-//             const loadedTexture = await loadTexture(textureUrl);
-//             return { name: texture.name, texture: loadedTexture };
-//         } catch (error) {
-//             console.error(`Failed to load texture ${texture.name}:`, error);
-//             return { name: texture.name, texture: null };
-//         }
-//     }));
-
-//     object.traverse(child => {
-//         if (child instanceof THREE.Mesh) {
-//             textures.forEach(tex => {
-//                 if (tex.texture) {
-//                     applyTextureToMaterial(child.material, tex);
-//                 }
-//             });
-//             child.material.needsUpdate = true;
-//         }
-//     });
-// }
-
-// function applyTextureToMaterial(material, tex) {
-//     const textureName = tex.name.toLowerCase();
-//     if (textureName.includes('diffuse') || textureName.includes('color')) {
-//         material.map = tex.texture;
-//     } else if (textureName.includes('bump') || textureName.includes('normal')) {
-//         material.normalMap = tex.texture;
-//     } else if (textureName.includes('specular')) {
-//         material.specularMap = tex.texture;
-//     }
-// }
-
-function addObjectToScene(scene, object) {
-    scene.add(object);
-}
-
-function fitCameraToObject(camera, object, controls) {
-    const box = new THREE.Box3().setFromObject(object);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const fov = camera.fov * (Math.PI / 180);
-    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-    cameraZ *= 1.5;
-    camera.position.z = cameraZ;
-    const minZ = box.min.z;
-    const cameraToFarEdge = (minZ < 0) ? -minZ + cameraZ : cameraZ - minZ;
-    camera.far = cameraToFarEdge * 3;
-    camera.updateProjectionMatrix();
-    if (controls) {
-        controls.target = center;
-        controls.maxDistance = cameraToFarEdge * 2;
+    function logMaterials(materials) {
+        Object.keys(materials).forEach(key => {
+            const mat = materials[key];
+            console.log(`Material ${key}:`, {
+                color: mat.color ? mat.color.getHexString() : 'N/A',
+                map: mat.map ? mat.map.name : 'N/A',
+                normalMap: mat.normalMap ? mat.normalMap.name : 'N/A',
+                specularMap: mat.specularMap ? mat.specularMap.name : 'N/A'
+            });
+        });
     }
-    camera.lookAt(center);
+    // 이벤트 리스너를 render3DModel 함수 내부로 이동
+    window.addEventListener('resize', onWindowResize);
+
+    function onWindowResize() {
+        camera.aspect = canvas.clientWidth / canvas.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    }
+    // 정리 함수 반환
+    return () => {
+        cancelAnimationFrame(animationFrameId);
+        window.removeEventListener('resize', onWindowResize);
+        // 필요한 경우 다른 정리 작업 수행
+    };
 }
-
-function animate(renderer, scene, camera, controls) {
-    requestAnimationFrame(() => animate(renderer, scene, camera, controls));
-    controls.update();
-    renderer.render(scene, camera);
-}
-
-function onWindowResize(camera, renderer) {
-    const canvas = renderer.domElement;
-    camera.aspect = canvas.clientWidth / canvas.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-}
-
-function showErrorMessage(canvas, message) {
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'red';
-    ctx.font = '16px Arial';
-    ctx.fillText(`Error: ${message}`, 10, 50);
-}
-// export function render3DModel(canvas, objData, mtlData, textureData, isUrl = false) {
-//     // render3DModel 함수 구현
-//     console.log('Render3DModel called with:', {
-//         objData: objData ? objData.substring(0, 100) + '...' : 'None',
-//         mtlData: mtlData ? mtlData.substring(0, 100) + '...' : 'None',
-//         textureData: textureData,
-//         isUrl: isUrl
-//     });
-
-//     let animationFrameId;
-
-//     const scene = new THREE.Scene();
-//     const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
-//     const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-//     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-//     renderer.setClearColor(0xcccccc);
-
-//     const controls = new OrbitControls(camera, renderer.domElement);
-//     controls.enableDamping = true;
-//     controls.dampingFactor = 0.25;
-//     controls.screenSpacePanning = false;
-//     controls.maxPolarAngle = Math.PI / 2;
-
-//     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-//     scene.add(ambientLight);
-//     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-//     directionalLight.position.set(1, 1, 1).normalize();
-//     scene.add(directionalLight);
-
-//     const loader = new OBJLoader();
-//     const textureLoader = new THREE.TextureLoader();
-
-//     function loadMtl() {
-//         return new Promise((resolve, reject) => {
-//             if (mtlData) {
-//                 const mtlLoader = new MTLLoader();
-//                 mtlLoader.setMaterialOptions({ side: THREE.DoubleSide });
-//                 if (isUrl) {
-//                     mtlLoader.load(mtlData,
-//                         (materials) => {
-//                             console.log('MTL loaded successfully', materials);
-//                             materials.preload();
-//                             logMaterials(materials.materials);
-//                             loader.setMaterials(materials);
-//                             resolve(materials);
-//                         },
-//                         undefined,
-//                         (error) => reject(new Error('Failed to load MTL: ' + error.message))
-//                     );
-//                 } else {
-//                     try {
-//                         const materialsCreator = mtlLoader.parse(mtlData);
-//                         materialsCreator.preload();
-//                         logMaterials(materialsCreator.materials);
-//                         loader.setMaterials(materialsCreator);
-//                         console.log('MTL parsed successfully', materialsCreator);
-//                         resolve(materialsCreator);
-//                     } catch (error) {
-//                         reject(new Error('Failed to parse MTL: ' + error.message));
-//                     }
-//                 }
-//             } else {
-//                 console.log('No MTL data provided');
-//                 resolve(null);
-//             }
-//         });
-//     }
-
-//     function loadObj(materials) {
-//         // loadObj 함수 구현
-//         return new Promise((resolve, reject) => {
-//             const onLoad = (object) => {
-//                 console.log('OBJ loaded successfully:', object);
-//                 object.traverse((child) => {
-//                     if (child instanceof THREE.Mesh) {
-//                         console.log('Mesh found:', child.name);
-//                         console.log('Material:', child.material);
-//                         if (child.material.map) {
-//                             console.log('Material has texture map:', child.material.map.name);
-//                         } else {
-//                             console.log('Material does not have texture map');
-//                         }
-//                         // Ensure the material is MeshPhongMaterial
-//                         if (!(child.material instanceof THREE.MeshPhongMaterial)) {
-//                             child.material = new THREE.MeshPhongMaterial({
-//                                 color: child.material.color,
-//                                 map: child.material.map,
-//                                 normalMap: child.material.normalMap,
-//                                 specularMap: child.material.specularMap
-//                             });
-//                         }
-//                         child.material.needsUpdate = true;
-//                     }
-//                 });
-//                 resolve(object);
-//             };
-
-//             if (isUrl) {
-//                 loader.load(objData, onLoad, onProgress,
-//                     (error) => reject(new Error('Failed to load OBJ: ' + error.message)));
-//             } else {
-//                 const objBlob = new Blob([objData], { type: 'text/plain' });
-//                 const objUrl = URL.createObjectURL(objBlob);
-//                 loader.load(objUrl, (object) => {
-//                     URL.revokeObjectURL(objUrl);
-//                     onLoad(object);
-//                 }, onProgress,
-//                     (error) => reject(new Error('Failed to load OBJ: ' + error.message)));
-//             }
-//         });
-//     }
-
-
-//     function loadTextures() {
-//         // loadTextures 함수 구현
-//         console.log('Loading textures:', textureData);
-//         return Promise.all(textureData.map(texture => {
-//             return new Promise((resolve, reject) => {
-//                 const textureName = isUrl ? texture : texture.name;
-//                 const textureUrl = isUrl ? texture : texture.content;
-
-//                 console.log(`Attempting to load texture: ${textureName} from ${textureUrl}`);
-
-//                 textureLoader.load(
-//                     textureUrl,
-//                     (loadedTexture) => {
-//                         console.log(`Texture ${textureName} loaded successfully:`, loadedTexture);
-//                         resolve({ name: textureName, texture: loadedTexture });
-//                     },
-//                     (xhr) => {
-//                         console.log(`${textureName} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-//                     },
-//                     (error) => {
-//                         console.error(`Failed to load texture ${textureName}: ${error.message}`);
-//                         resolve({ name: textureName, texture: null });
-//                     }
-//                 );
-//             });
-//         }));
-//     }
-
-
-//     // In the main render3DModel function:
-//     loadMtl()
-//         .then(materials => {
-//             console.log('MTL loading completed, starting OBJ and texture loading');
-//             return Promise.all([loadObj(materials), loadTextures()]);
-//         })
-//         .then(([object, textures]) => {
-//             console.log('OBJ and textures loaded, applying textures');
-//             console.log('Loaded textures:', textures);
-//             applyTextures(object, textures);
-//             scene.add(object);
-//             console.log('Object added to scene with textures');
-//             fitCameraToObject(camera, object, controls);
-//             console.log('Scene contents:', scene.children);
-//             animate();
-//         })
-//         .catch((error) => {
-//             console.error('Error in render3DModel:', error.message);
-//             canvas.parentNode.textContent = 'Error rendering 3D model: ' + error.message;
-//         });
-
-//     function applyTextures(object, textures) {
-//         // applyTextures 함수 구현
-//         object.traverse((child) => {
-//             if (child instanceof THREE.Mesh) {
-//                 const material = child.material;
-//                 console.log('Applying textures to material:', material.name);
-
-//                 textures.forEach(tex => {
-//                     if (tex.texture) {
-//                         const textureName = tex.name.toLowerCase();
-//                         console.log(`Processing texture: ${textureName}`);
-
-//                         if (textureName.includes('diffuse') || textureName.includes('color')) {
-//                             material.map = tex.texture;
-//                             console.log('Applied diffuse/color map');
-//                         } else if (textureName.includes('bump') || textureName.includes('normal')) {
-//                             material.bumpMap = tex.texture;
-//                             console.log('Applied bump/normal map');
-//                         } else if (textureName.includes('specular')) {
-//                             material.specularMap = tex.texture;
-//                             console.log('Applied specular map');
-//                         }
-//                         // Add more conditions for other texture types if needed
-//                     }
-//                 });
-
-//                 material.needsUpdate = true;
-//                 console.log('Updated material:', JSON.stringify(material.toJSON(), null, 2));
-//             }
-//         });
-//     }
-
-//     function onProgress(xhr) {
-//         // onProgress 함수 구현
-//         console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-//     }
-
-//     function animate() {
-//         animationFrameId = requestAnimationFrame(animate);
-//         controls.update();
-//         renderer.render(scene, camera);
-//     }
-
-//     function fitCameraToObject(camera, object, controls) {
-//         // fitCameraToObject 함수 구현
-//         const box = new THREE.Box3().setFromObject(object);
-//         const center = box.getCenter(new THREE.Vector3());
-//         const size = box.getSize(new THREE.Vector3());
-//         const maxDim = Math.max(size.x, size.y, size.z);
-//         const fov = camera.fov * (Math.PI / 180);
-//         let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-//         cameraZ *= 1.5;
-//         camera.position.z = cameraZ;
-//         const minZ = box.min.z;
-//         const cameraToFarEdge = (minZ < 0) ? -minZ + cameraZ : cameraZ - minZ;
-//         camera.far = cameraToFarEdge * 3;
-//         camera.updateProjectionMatrix();
-//         if (controls) {
-//             controls.target = center;
-//             controls.maxDistance = cameraToFarEdge * 2;
-//         }
-//         console.log('Camera fitted to object:', { position: camera.position, target: controls.target });
-//     }
-//     function logMaterials(materials) {
-//         Object.keys(materials).forEach(key => {
-//             const mat = materials[key];
-//             console.log(`Material ${key}:`, {
-//                 color: mat.color ? mat.color.getHexString() : 'N/A',
-//                 map: mat.map ? mat.map.name : 'N/A',
-//                 normalMap: mat.normalMap ? mat.normalMap.name : 'N/A',
-//                 specularMap: mat.specularMap ? mat.specularMap.name : 'N/A'
-//             });
-//         });
-//     }
-//         // 이벤트 리스너를 render3DModel 함수 내부로 이동
-//         window.addEventListener('resize', onWindowResize);
-
-//     function onWindowResize() {
-//         camera.aspect = canvas.clientWidth / canvas.clientHeight;
-//         camera.updateProjectionMatrix();
-//         renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-//     }
-//         // 정리 함수 반환
-//         return () => {
-//             cancelAnimationFrame(animationFrameId);
-//             window.removeEventListener('resize', onWindowResize);
-//             // 필요한 경우 다른 정리 작업 수행
-//         };
-// }

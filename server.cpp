@@ -494,7 +494,8 @@ void init_database()
         "title TEXT NOT NULL, "
         "content TEXT NOT NULL, "
         "author TEXT NOT NULL, "
-        "timestamp TEXT);";
+        "timestamp TEXT NOT NULL,"
+        "category TEXT NOT NULL);";  // 카테고리 컬럼 추가
 
     const char *sql_create_comments_table =
         "CREATE TABLE IF NOT EXISTS comments ("
@@ -602,6 +603,46 @@ void init_database()
         }
     }
     sqlite3_finalize(stmt);
+
+
+    // 'category' 컬럼이 존재하는지 확인
+    sql_check_column = "PRAGMA table_info(posts);";
+    //sqlite3_stmt *stmt;
+    rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
+    if (rc != SQLITE_OK)
+    {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    bool category_exists = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        std::string column_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+        if (column_name == "category")
+        {
+            category_exists = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    // 'category' 컬럼이 존재하지 않으면 추가
+    if (!category_exists)
+    {
+        std::string sql_add_column = "ALTER TABLE posts ADD COLUMN category TEXT DEFAULT 'Uncategorized';";
+        rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &err_msg);
+        if (rc != SQLITE_OK)
+        {
+            std::cerr << "SQL error (add column): " << err_msg << std::endl;
+            sqlite3_free(err_msg);
+            exit(EXIT_FAILURE);
+        }
+        else
+        {
+            std::cout << "Added 'category' column to posts table" << std::endl;
+        }
+    }
 
     std::cout << "Database initialization completed." << std::endl;
 }
@@ -1481,9 +1522,8 @@ void send_font(SSL *ssl, const std::string &file_path, const std::string &conten
     file.close();
     // close(client_socket);
 }
-std::string get_font_content_type(const std::string &file_extension)
-{
-    if (file_extension == ".eot")
+std::string get_content_type(const std::string &file_extension) {
+        if (file_extension == ".eot")
         return "application/vnd.ms-fontobject";
     if (file_extension == ".otf")
         return "font/otf";
@@ -1495,9 +1535,19 @@ std::string get_font_content_type(const std::string &file_extension)
         return "font/woff";
     if (file_extension == ".woff2")
         return "font/woff2";
-    return "application/octet-stream";
+    if (file_extension == ".html") return "text/html";
+    if (file_extension == ".css") return "text/css";
+    if (file_extension == ".js") return "application/javascript";
+    if (file_extension == ".json") return "application/json";
+    if (file_extension == ".png") return "image/png";
+    if (file_extension == ".jpg" || file_extension == ".jpeg") return "image/jpeg";
+    if (file_extension == ".gif") return "image/gif";
+    if (file_extension == ".pdf") return "application/pdf";
+    // Add more file types as needed
+    return "application/octet-stream"; // Default type for unknown extensions
 }
-void send_obj(SSL *ssl, const std::string &file_path)
+
+void send_uploads_file(SSL *ssl, const std::string &file_path)
 {
     std::ifstream file(file_path, std::ios::binary);
     if (!file)
@@ -1508,26 +1558,31 @@ void send_obj(SSL *ssl, const std::string &file_path)
                                          "Connection: close\r\n\r\n"
                                          "404 Not Found";
         SSL_write(ssl, not_found_response.c_str(), not_found_response.length());
-        // close(client_socket);
         return;
     }
 
+    // Get file extension
+    std::string file_extension = file_path.substr(file_path.find_last_of("."));
+    std::string content_type = get_content_type(file_extension);
+
+    // Read file content
     std::ostringstream oss;
     oss << file.rdbuf();
     std::string file_content = oss.str();
 
+    // Prepare and send HTTP header
     std::string header = "HTTP/1.1 200 OK\r\n"
-                         "Content-Type: application/octet-stream\r\n"
-                         "Content-Length: " +
-                         std::to_string(file_content.size()) + "\r\n"
-                                                               "Connection: close\r\n\r\n";
+                         "Content-Type: " + content_type + "\r\n"
+                         "Content-Length: " + std::to_string(file_content.size()) + "\r\n"
+                         "Connection: close\r\n\r\n";
+    
     SSL_write(ssl, header.c_str(), header.length());
+
+    // Send file content
     SSL_write(ssl, file_content.c_str(), file_content.length());
 
     file.close();
-    // close(client_socket);
-}
-// JSON 파싱 함수
+}// JSON 파싱 함수
 std::map<std::string, std::string> parse_json(const std::string &json_str)
 {
     std::map<std::string, std::string> json_map;
@@ -1827,9 +1882,10 @@ void save_post(SSL *ssl, const std::string &body)
     std::string content = postData["content"];
     std::string author = postData["author"];
     std::string timestamp = postData["timestamp"];
+    std::string category = postData["category"];  // 카테고리 추가
 
     sqlite3_stmt *stmt;
-    std::string sql = "INSERT INTO posts (title, content, author, timestamp) VALUES (?, ?, ?, ?);";
+    std::string sql = "INSERT INTO posts (title, content, author, timestamp, category) VALUES (?, ?, ?, ?, ?);";
 
     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
     if (rc != SQLITE_OK)
@@ -1844,6 +1900,7 @@ void save_post(SSL *ssl, const std::string &body)
     sqlite3_bind_text(stmt, 2, content.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, author.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, category.c_str(), -1, SQLITE_STATIC);  // 카테고리 바인딩
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE)
@@ -1871,23 +1928,25 @@ void replace_all(std::string &str, const std::string &from, const std::string &t
         start_pos += to.length();
     }
 }
-void handle_get_posts(SSL *ssl)
-{
-    std::string sql = "SELECT id, title, content, author, timestamp FROM posts;";
+void handle_get_posts(SSL *ssl, const std::string &query) {
+    std::unordered_map<std::string, std::string> params = parse_query_params(query);
+    std::string category = params["category"];
+
+    std::string sql = "SELECT id, title, content, author, timestamp FROM posts WHERE category = ?;";
     sqlite3_stmt *stmt;
 
     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
-    {
+    if (rc != SQLITE_OK) {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
         SSL_write(ssl, response.c_str(), response.length());
         return;
     }
 
+    sqlite3_bind_text(stmt, 1, category.c_str(), -1, SQLITE_STATIC);
+
     Json::Value posts(Json::arrayValue);
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json::Value post;
         post["id"] = sqlite3_column_int(stmt, 0);
         post["title"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
@@ -1899,20 +1958,10 @@ void handle_get_posts(SSL *ssl)
     sqlite3_finalize(stmt);
 
     Json::StreamWriterBuilder writer;
-    // Adjust the Json::StreamWriterBuilder settings
-    writer.settings_["indentation"] = "";             // No indentation
-    writer.settings_["emitUTF8"] = true;              // Use UTF-8 encoding
-    writer.settings_["escapeForwardSlashes"] = false; // Do not escape forward slashes
-
     std::string json_response = Json::writeString(writer, posts);
-    // Replace \\\" with \"
-    // replace_all(json_response, "\\\"", "\"");
-
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
     SSL_write(ssl, response.c_str(), response.length());
-    // close(client_socket);
-}
-std::vector<std::string> getImagesList(const std::string &directory)
+}std::vector<std::string> getImagesList(const std::string &directory)
 {
     std::vector<std::string> images;
     for (const auto &entry : fs::directory_iterator(directory))
@@ -2805,6 +2854,76 @@ void handle_create_folder(SSL *ssl, const std::string &request_body)
     send_json_response2(ssl, response["success"] ? 200 : 400,
                         response["success"] ? "OK" : "Bad Request", response);
 }
+// 파일 크기를 가져오는 함수
+std::string get_file_size(const std::string& file_path) {
+    struct stat file_status;
+    if (stat(file_path.c_str(), &file_status) != 0) {
+        return "Unknown";
+    }
+    
+    off_t size = file_status.st_size;
+    
+    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
+    int unit_index = 0;
+    double size_in_units = static_cast<double>(size);
+    
+    while (size_in_units >= 1024 && unit_index < 4) {
+        size_in_units /= 1024;
+        unit_index++;
+    }
+    
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2) << size_in_units << " " << units[unit_index];
+    return ss.str();
+}
+
+// 파일 정보를 가져오는 엔드포인트
+void handle_get_file_info(SSL *ssl, const std::string &query) {
+    std::string file_path = "";
+    size_t path_pos = query.find("path=");
+    if (path_pos != std::string::npos) {
+        file_path = query.substr(path_pos + 5);
+        file_path = url_decode(file_path);
+    }
+
+    std::string full_path = UPLOAD_ROOT_DIR + file_path;
+
+    // 보안 검사: 경로가 UPLOAD_ROOT_DIR 밖으로 나가지 않도록 확인
+    // if (full_path.substr(0, strlen(UPLOAD_ROOT_DIR)) != UPLOAD_ROOT_DIR) {
+    //     send_json_response(ssl, 403, "Forbidden", "{\"error\": \"Access is not allowed\"}");
+    //     return;
+    // }
+
+    std::string file_size = get_file_size(full_path);
+
+    json response;
+    response["size"] = file_size;
+
+    send_json_response(ssl, 200, "OK", response.dump());
+}
+void handle_get_categories(SSL *ssl) {
+    std::string sql = "SELECT DISTINCT category FROM posts;";
+    sqlite3_stmt *stmt;
+
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+        SSL_write(ssl, response.c_str(), response.length());
+        return;
+    }
+
+    Json::Value categories(Json::arrayValue);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        categories.append(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+    }
+    sqlite3_finalize(stmt);
+
+    Json::StreamWriterBuilder writer;
+    std::string json_response = Json::writeString(writer, categories);
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
+    SSL_write(ssl, response.c_str(), response.length());
+}
 std::unordered_map<std::string, std::function<void(SSL *ssl)>> get_routes = {
     {"/ws", [](SSL *ssl)
      {
@@ -2814,7 +2933,8 @@ std::unordered_map<std::string, std::function<void(SSL *ssl)>> get_routes = {
      }},
     {"/usercount", handle_user_count_request},
     {"/filelist", handle_file_list_request},
-    {"/posts", handle_get_posts},
+    {"/categories", handle_get_categories},
+    // {"/posts", handle_get_posts},
     {"/images", handle_get_images},
     // Add other GET routes here
 };
@@ -2837,10 +2957,8 @@ std::unordered_map<std::string, std::function<void(SSL *ssl, const std::string &
 };
 std::unordered_map<std::string, std::function<void(SSL *ssl, const std::string &)>> static_routes = {
     {"/images", send_image},
-    {"/assets/js", send_js},
-    {"/assets/css", send_css},
-    {"/uploads", send_obj},
-    {"/assets/html", send_html},
+    {"/assets", send_uploads_file},
+    {"/uploads", send_uploads_file},
 };
 // 쿼리를 처리하는 함수의 타입 정의
 using QueryHandler = std::function<void(SSL *ssl, const std::string &)>;
@@ -2849,6 +2967,8 @@ using QueryHandler = std::function<void(SSL *ssl, const std::string &)>;
 std::unordered_map<std::string, QueryHandler> get_routes_with_query = {
     {"/comments", handle_get_comments},
     {"/drive-contents", handle_drive_contents},
+    {"/get-file-info", handle_get_file_info},
+    {"/posts", handle_get_posts},
     {"/download-file", handle_download_file}};
 void handle_request(SSL *ssl, const std::string &request)
 {
@@ -2933,7 +3053,7 @@ void handle_request(SSL *ssl, const std::string &request)
                             font_path = font_path.substr(0, query_pos);
                         }
                         std::string extension = font_path.substr(font_path.find_last_of("."));
-                        std::string content_type = get_font_content_type(extension);
+                        std::string content_type = get_content_type(extension);
                         send_font(ssl, font_path, content_type);
                     }
                     else if (path == "/")

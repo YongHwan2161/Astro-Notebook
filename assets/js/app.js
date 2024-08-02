@@ -3,6 +3,8 @@ import * as auth from './modules/auth.js';
 import * as posts from './modules/posts.js';
 import * as drive from './modules/drive.js';
 import * as modelRenderer from './modules/modelRenderer.js';
+import { sortPosts } from './modules/posts.js';
+import { EditPost } from './modules/posts.js';
 
 let currentUser = null;
 
@@ -61,7 +63,7 @@ window.loadPosts = posts.loadPosts;
 window.showPostContent = posts.showPostContent;
 window.hidePostContent = posts.hidePostContent;
 window.deletePost = posts.deletePost;
-window.EditPost = posts.EditPost;
+window.writePost = posts.writePost;
 window.savePost = posts.savePost;
 window.submitComment = posts.submitComment;
 window.editComment = posts.editComment;
@@ -76,3 +78,5 @@ document.getElementById('file-upload').addEventListener('change', drive.uploadFi
 
 window.render3DModel = modelRenderer.render3DModel;
 // 기타 전역으로 노출해야 하는 함수들...
+window.sortPosts = sortPosts;
+window.EditPost = EditPost;
