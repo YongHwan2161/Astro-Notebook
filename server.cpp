@@ -21,7 +21,7 @@
 #include <regex>
 #include <random>
 #include <filesystem>
-#include <nlohmann/json.hpp>
+#include "header/json.hpp"
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <openssl/ssl.h>
@@ -495,7 +495,7 @@ void init_database()
         "content TEXT NOT NULL, "
         "author TEXT NOT NULL, "
         "timestamp TEXT NOT NULL,"
-        "category TEXT NOT NULL);";  // 카테고리 컬럼 추가
+        "category TEXT NOT NULL);"; // 카테고리 컬럼 추가
 
     const char *sql_create_comments_table =
         "CREATE TABLE IF NOT EXISTS comments ("
@@ -604,10 +604,9 @@ void init_database()
     }
     sqlite3_finalize(stmt);
 
-
     // 'category' 컬럼이 존재하는지 확인
     sql_check_column = "PRAGMA table_info(posts);";
-    //sqlite3_stmt *stmt;
+    // sqlite3_stmt *stmt;
     rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
     if (rc != SQLITE_OK)
     {
@@ -1522,8 +1521,9 @@ void send_font(SSL *ssl, const std::string &file_path, const std::string &conten
     file.close();
     // close(client_socket);
 }
-std::string get_content_type(const std::string &file_extension) {
-        if (file_extension == ".eot")
+std::string get_content_type(const std::string &file_extension)
+{
+    if (file_extension == ".eot")
         return "application/vnd.ms-fontobject";
     if (file_extension == ".otf")
         return "font/otf";
@@ -1535,14 +1535,22 @@ std::string get_content_type(const std::string &file_extension) {
         return "font/woff";
     if (file_extension == ".woff2")
         return "font/woff2";
-    if (file_extension == ".html") return "text/html";
-    if (file_extension == ".css") return "text/css";
-    if (file_extension == ".js") return "application/javascript";
-    if (file_extension == ".json") return "application/json";
-    if (file_extension == ".png") return "image/png";
-    if (file_extension == ".jpg" || file_extension == ".jpeg") return "image/jpeg";
-    if (file_extension == ".gif") return "image/gif";
-    if (file_extension == ".pdf") return "application/pdf";
+    if (file_extension == ".html")
+        return "text/html";
+    if (file_extension == ".css")
+        return "text/css";
+    if (file_extension == ".js")
+        return "application/javascript";
+    if (file_extension == ".json")
+        return "application/json";
+    if (file_extension == ".png")
+        return "image/png";
+    if (file_extension == ".jpg" || file_extension == ".jpeg")
+        return "image/jpeg";
+    if (file_extension == ".gif")
+        return "image/gif";
+    if (file_extension == ".pdf")
+        return "application/pdf";
     // Add more file types as needed
     return "application/octet-stream"; // Default type for unknown extensions
 }
@@ -1572,17 +1580,19 @@ void send_uploads_file(SSL *ssl, const std::string &file_path)
 
     // Prepare and send HTTP header
     std::string header = "HTTP/1.1 200 OK\r\n"
-                         "Content-Type: " + content_type + "\r\n"
-                         "Content-Length: " + std::to_string(file_content.size()) + "\r\n"
-                         "Connection: close\r\n\r\n";
-    
+                         "Content-Type: " +
+                         content_type + "\r\n"
+                                        "Content-Length: " +
+                         std::to_string(file_content.size()) + "\r\n"
+                                                               "Connection: close\r\n\r\n";
+
     SSL_write(ssl, header.c_str(), header.length());
 
     // Send file content
     SSL_write(ssl, file_content.c_str(), file_content.length());
 
     file.close();
-}// JSON 파싱 함수
+} // JSON 파싱 함수
 std::map<std::string, std::string> parse_json(const std::string &json_str)
 {
     std::map<std::string, std::string> json_map;
@@ -1882,7 +1892,7 @@ void save_post(SSL *ssl, const std::string &body)
     std::string content = postData["content"];
     std::string author = postData["author"];
     std::string timestamp = postData["timestamp"];
-    std::string category = postData["category"];  // 카테고리 추가
+    std::string category = postData["category"]; // 카테고리 추가
 
     sqlite3_stmt *stmt;
     std::string sql = "INSERT INTO posts (title, content, author, timestamp, category) VALUES (?, ?, ?, ?, ?);";
@@ -1900,7 +1910,7 @@ void save_post(SSL *ssl, const std::string &body)
     sqlite3_bind_text(stmt, 2, content.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, author.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 5, category.c_str(), -1, SQLITE_STATIC);  // 카테고리 바인딩
+    sqlite3_bind_text(stmt, 5, category.c_str(), -1, SQLITE_STATIC); // 카테고리 바인딩
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE)
@@ -1928,7 +1938,8 @@ void replace_all(std::string &str, const std::string &from, const std::string &t
         start_pos += to.length();
     }
 }
-void handle_get_posts(SSL *ssl, const std::string &query) {
+void handle_get_posts(SSL *ssl, const std::string &query)
+{
     std::unordered_map<std::string, std::string> params = parse_query_params(query);
     std::string category = params["category"];
 
@@ -1936,7 +1947,8 @@ void handle_get_posts(SSL *ssl, const std::string &query) {
     sqlite3_stmt *stmt;
 
     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK) {
+    if (rc != SQLITE_OK)
+    {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
         SSL_write(ssl, response.c_str(), response.length());
@@ -1946,7 +1958,8 @@ void handle_get_posts(SSL *ssl, const std::string &query) {
     sqlite3_bind_text(stmt, 1, category.c_str(), -1, SQLITE_STATIC);
 
     Json::Value posts(Json::arrayValue);
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
         Json::Value post;
         post["id"] = sqlite3_column_int(stmt, 0);
         post["title"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
@@ -1961,7 +1974,8 @@ void handle_get_posts(SSL *ssl, const std::string &query) {
     std::string json_response = Json::writeString(writer, posts);
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
     SSL_write(ssl, response.c_str(), response.length());
-}std::vector<std::string> getImagesList(const std::string &directory)
+}
+std::vector<std::string> getImagesList(const std::string &directory)
 {
     std::vector<std::string> images;
     for (const auto &entry : fs::directory_iterator(directory))
@@ -2855,33 +2869,38 @@ void handle_create_folder(SSL *ssl, const std::string &request_body)
                         response["success"] ? "OK" : "Bad Request", response);
 }
 // 파일 크기를 가져오는 함수
-std::string get_file_size(const std::string& file_path) {
+std::string get_file_size(const std::string &file_path)
+{
     struct stat file_status;
-    if (stat(file_path.c_str(), &file_status) != 0) {
+    if (stat(file_path.c_str(), &file_status) != 0)
+    {
         return "Unknown";
     }
-    
+
     off_t size = file_status.st_size;
-    
-    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
+
+    const char *units[] = {"B", "KB", "MB", "GB", "TB"};
     int unit_index = 0;
     double size_in_units = static_cast<double>(size);
-    
-    while (size_in_units >= 1024 && unit_index < 4) {
+
+    while (size_in_units >= 1024 && unit_index < 4)
+    {
         size_in_units /= 1024;
         unit_index++;
     }
-    
+
     std::stringstream ss;
     ss << std::fixed << std::setprecision(2) << size_in_units << " " << units[unit_index];
     return ss.str();
 }
 
 // 파일 정보를 가져오는 엔드포인트
-void handle_get_file_info(SSL *ssl, const std::string &query) {
+void handle_get_file_info(SSL *ssl, const std::string &query)
+{
     std::string file_path = "";
     size_t path_pos = query.find("path=");
-    if (path_pos != std::string::npos) {
+    if (path_pos != std::string::npos)
+    {
         file_path = query.substr(path_pos + 5);
         file_path = url_decode(file_path);
     }
@@ -2901,12 +2920,14 @@ void handle_get_file_info(SSL *ssl, const std::string &query) {
 
     send_json_response(ssl, 200, "OK", response.dump());
 }
-void handle_get_categories(SSL *ssl) {
+void handle_get_categories(SSL *ssl)
+{
     std::string sql = "SELECT DISTINCT category FROM posts;";
     sqlite3_stmt *stmt;
 
     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK) {
+    if (rc != SQLITE_OK)
+    {
         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
         SSL_write(ssl, response.c_str(), response.length());
@@ -2914,7 +2935,8 @@ void handle_get_categories(SSL *ssl) {
     }
 
     Json::Value categories(Json::arrayValue);
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
         categories.append(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
     }
     sqlite3_finalize(stmt);
@@ -3193,19 +3215,43 @@ SSL_CTX *create_context()
 
     return ctx;
 }
+// void configure_context(SSL_CTX *ctx)
+// {
+//     // 인증서와 개인키 설정
+//     if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0)
+//     {
+//         ERR_print_errors_fp(stderr);
+//         exit(EXIT_FAILURE);
+//     }
+
+//     if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0)
+//     {
+//         ERR_print_errors_fp(stderr);
+//         exit(EXIT_FAILURE);
+//     }
+// }
 void configure_context(SSL_CTX *ctx)
 {
-    // 인증서와 개인키 설정
-    if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0)
+    if (SSL_CTX_use_certificate_chain_file(ctx, "/etc/letsencrypt/live/alsteam23.kro.kr/fullchain.pem") <= 0)
     {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
+        if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0)
+        {
+            ERR_print_errors_fp(stderr);
+            exit(EXIT_FAILURE);
+        }
+        // ERR_print_errors_fp(stderr);
+        // exit(EXIT_FAILURE);
     }
 
-    if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0)
+    if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/letsencrypt/live/alsteam23.kro.kr/privkey.pem", SSL_FILETYPE_PEM) <= 0)
     {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
+        if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0)
+        {
+            ERR_print_errors_fp(stderr);
+            exit(EXIT_FAILURE);
+        }
+        // ERR_print_errors_fp(stderr);
+        // exit(EXIT_FAILURE);
     }
 }
 const std::string PID_FILE = "./server.pid";
@@ -3384,7 +3430,7 @@ void start_server()
 
 int main()
 {
-        openlog("ssl_server", LOG_PID|LOG_CONS, LOG_USER);
+    openlog("ssl_server", LOG_PID | LOG_CONS, LOG_USER);
     // SIGPIPE 시그널 무시
     signal(SIGPIPE, SIG_IGN);
     // 데이터베이스 초기화
