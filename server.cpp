@@ -3004,6 +3004,10 @@ void start_server()
         {
             syslog(LOG_ERR, "setsockopt failed for SO_SNDTIMEO: %s", strerror(errno));
         }
+
+            // 인증서 검증 비활성화
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+
         SSL *ssl = SSL_new(ctx);
         if (!ssl)
         {
