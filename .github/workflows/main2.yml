@@ -41,7 +41,6 @@ jobs:
           rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./assets ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
           rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./images ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
           rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./uploads ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./header ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
       - name: Execute deployment script on remote machine
         run: |
           echo "Executing deployment script on remote machine..."
