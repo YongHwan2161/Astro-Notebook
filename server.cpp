@@ -3016,7 +3016,7 @@ void start_server()
             continue;
         }
 
-        SSL_set_fd(ssl, client_socket);
+        SSL_set_fd(ssl, client_socket); 
 
         int ret;
         do
