@@ -67,11 +67,14 @@
         <div id="welcomeContainer" class="form-container">
             <h1>Welcome</h1>
             <p id="welcomeMessage" style="color: white;"></p>
-            <button onclick="logout()">Logout</button>
+            <button onclick="logout()" style="color: white;">Logout</button>
         </div>
 
-        <!-- <a>Total Users: </a> -->
-        <div id="userCount" style="color: white;"></div>
+        <div id="userCountContainer">
+            <button id="fetchUserCountBtn" style="color: white;">전체 사용자 수 확인</button>
+            <span id="userCount" style="color: white;"></span>
+        </div>
+        <!-- <div id="userCount" style="color: white;"></div> -->
 
     </nav>
 
@@ -224,30 +227,33 @@
                         <p>Categoris </p>
                         <div id="categories-container" class="mb-4"></div>
                         <table id="posts-table" class="min-w-full bg-white">
-                          <!-- 테이블 내용 -->
-                          <thead class="bg-gray-200">
-                            <tr>
-                              <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">
-                                Title
-                                <button onclick="sortPosts('title')" class="sort-button reset-button-style" id="sort-title">⇅</button>
-                              </th>
-                              <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Author</th>
-                              <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">
-                                Timestamp
-                                <button onclick="sortPosts('timestamp')" class="sort-button reset-button-style" id="sort-timestamp">⇅</button>
-                              </th>
-                              <!-- <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Category</th> -->
-                              <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Actions</th>
-                            </tr>
-                          </thead>
-                      <tbody id="posts-container">
-                        <!-- 게시글 행들이 여기에 동적으로 추가됩니다 -->
-                      </tbody>
+                            <!-- 테이블 내용 -->
+                            <thead class="bg-gray-200">
+                                <tr>
+                                    <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">
+                                        Title
+                                        <button onclick="sortPosts('title')" class="sort-button reset-button-style"
+                                            id="sort-title">⇅</button>
+                                    </th>
+                                    <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Author</th>
+                                    <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">
+                                        Timestamp
+                                        <button onclick="sortPosts('timestamp')" class="sort-button reset-button-style"
+                                            id="sort-timestamp">⇅</button>
+                                    </th>
+                                    <!-- <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Category</th> -->
+                                    <th class="py-3 px-4 border-b text-left font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="posts-container">
+                                <!-- 게시글 행들이 여기에 동적으로 추가됩니다 -->
+                            </tbody>
                         </table>
-                      </div>
+                    </div>
                     <div id="post-content">
                         <h2 id="post-title"></h2>
                         <p id="post-author-timestamp"></p>
+                        <p id="post-category"></p>
                         <p id="post-body"></p>
                         <div id="comments-section">
                             <h3>Comments</h3>
@@ -342,148 +348,9 @@
 
     <script src="/assets/js/app.js" type="module"></script>
     <script>
-
-        document.addEventListener('DOMContentLoaded', async () => {
-
-            fetchUserCount();
-
-            // 로그 컨테이너 생성
-            const logContainer = document.createElement('div');
-            logContainer.id = 'log-container';
-            logContainer.style.cssText = `
-        position: fixed;
-        bottom: 10px;
-        left: 10px;
-        width: 300px;
-        max-height: 400px;
-        overflow-y: auto;
-        background: rgba(0,0,0,0.8);
-        color: white;
-        font-family: monospace;
-        padding: 10px;
-        z-index: 9999;
-        display: none;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0,0,0,0.5);
-    `;
-
-            // 토글 버튼 생성
-            const toggleButton = document.createElement('button');
-            toggleButton.textContent = 'Show Logs';
-            toggleButton.style.cssText = `
-        position: fixed;
-        bottom: 10px;
-        left: 10px;
-        background: #007bff;
-        color: white;
-        border: none;
-        padding: 10px 10px;
-        cursor: pointer;
-        z-index: 10000;
-        border-radius: 5px;
-    `;
-
-            // 로그 지우기 버튼 생성
-            const clearButton = document.createElement('button');
-            clearButton.textContent = 'Clear Logs';
-            clearButton.style.cssText = `
-        position: absolute;
-        top: 5px;
-        right: 5px;
-        background: #dc3545;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        cursor: pointer;
-        border-radius: 3px;
-    `;
-
-            // 토글 기능 구현
-            let isVisible = false;
-            toggleButton.onclick = function () {
-                isVisible = !isVisible;
-                logContainer.style.display = isVisible ? 'block' : 'none';
-                toggleButton.textContent = isVisible ? 'Hide Logs' : 'Show Logs';
-            };
-
-            // 로그 지우기 기능 구현
-            clearButton.onclick = function () {
-                logContainer.innerHTML = '';
-                logContainer.appendChild(clearButton);
-            };
-
-            logContainer.appendChild(clearButton);
-            document.body.appendChild(toggleButton);
-            document.body.appendChild(logContainer);
-
-            // console 메소드 오버라이드
-            const originalConsole = {
-                log: console.log,
-                error: console.error,
-                warn: console.warn,
-                info: console.info
-            };
-
-            function logToPage(message, type) {
-                const logElement = document.createElement('div');
-                logElement.textContent = `[${type.toUpperCase()}] ${message}`;
-                logElement.style.cssText = `
-            margin-bottom: 5px;
-            padding: 5px;
-            border-radius: 3px;
-            background: ${type === 'error' ? 'rgba(255,0,0,0.2)' :
-                        type === 'warn' ? 'rgba(255,255,0,0.2)' :
-                            'rgba(255,255,255,0.1)'};
-        `;
-                logContainer.insertBefore(logElement, logContainer.firstChild);
-
-                // 로그가 100개를 초과하면 가장 오래된 로그 제거
-                if (logContainer.children.length > 101) { // clearButton을 포함하므로 101
-                    logContainer.removeChild(logContainer.lastChild);
-                }
-            }
-
-            console.log = function () {
-                logToPage(Array.from(arguments).join(' '), 'log');
-                originalConsole.log.apply(console, arguments);
-            };
-
-            console.error = function () {
-                logToPage(Array.from(arguments).join(' '), 'error');
-                originalConsole.error.apply(console, arguments);
-            };
-
-            console.warn = function () {
-                logToPage(Array.from(arguments).join(' '), 'warn');
-                originalConsole.warn.apply(console, arguments);
-            };
-
-            console.info = function () {
-                logToPage(Array.from(arguments).join(' '), 'info');
-                originalConsole.info.apply(console, arguments);
-            };
-        });
-
         let isUsernameAvailable = false;
         document.getElementById('signupButton').disabled = true;
-        function fetchUserCount() {
-            fetch('/usercount')
-                .then(response => response.json())
-                .then(data => {
-                    const userCountDiv = document.getElementById('userCount');
-                    if (data.success) {
-                        userCountDiv.textContent = "Total users: " + data.user_count;
-                    } else {
-                        throw new Error(data.error || 'Unknown error occurred');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching user count:', error);
-                    const userCountDiv = document.getElementById('userCount');
-                    userCountDiv.textContent = "Error fetching user count";
-                    userCountDiv.style.color = 'red';
-                });
-        }
+
         function toggleChatWindow() {
             const chatWindow = document.getElementById('chat-window');
             if (chatWindow.style.display === 'none' || chatWindow.style.display === '') {

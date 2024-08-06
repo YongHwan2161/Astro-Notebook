@@ -61,5 +61,6 @@
         "condition_variable": "cpp",
         "regex": "cpp",
         "shared_mutex": "cpp"
-    }
+    },
+    "python.analysis.typeCheckingMode": "basic"
 }

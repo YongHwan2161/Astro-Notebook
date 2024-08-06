@@ -3,12 +3,14 @@ import * as auth from './modules/auth.js';
 import * as posts from './modules/posts.js';
 import * as drive from './modules/drive.js';
 import * as modelRenderer from './modules/modelRenderer.js';
-import { loadCategories, sortPosts } from './modules/posts.js';
+import { loadCategories, renderCategories, loadPosts, sortPosts } from './modules/posts.js';
 import { EditPost } from './modules/posts.js';
+import { createLogViewer } from './modules/logViewer.js';
 
 let currentUser = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+    createLogViewer();
     console.log('app.js loaded');
     initApp();
 });
@@ -36,7 +38,7 @@ function initApp() {
 
 
 // 전역 스코프에 노출할 함수들
-window.showSection = (sectionId) => {
+window.showSection = async (sectionId) => {
     // showSection 함수의 현재 구현을 여기로 옮깁니다.
     // Hide all sections
     document.getElementById('banner').classList.add('hidden');
@@ -46,7 +48,27 @@ window.showSection = (sectionId) => {
     // Show the selected section
     document.getElementById(sectionId).classList.remove('hidden');
     if (sectionId == 'banner_project') {
-        loadCategories();  // 페이지가 로드될 때 카테고리 목록을 로드
+        const categoriesContainer = document.getElementById('categories-container');
+
+        try {
+            const categories = await loadCategories();
+            renderCategories(categories, categoriesContainer);
+
+            categoriesContainer.addEventListener('click', (event) => {
+                if (event.target.classList.contains('category-button')) {
+                    const category = event.target.dataset.category;
+                    loadPosts(category);
+                }
+            });
+
+            // 기본 카테고리 로드 (예: 'All' 또는 첫 번째 카테고리)
+            if (categories.length > 0) {
+                loadPosts(categories[0]);
+            }
+        } catch (error) {
+            console.error('Failed to initialize categories:', error);
+            categoriesContainer.innerHTML = '<p>Failed to load categories. Please try again later.</p>';
+        }
     } else if (sectionId == 'banner_drive') {
         //loadImage();  // 페이지가 로드될 때 게시글 목록을 로드
         drive.loadDriveContent();

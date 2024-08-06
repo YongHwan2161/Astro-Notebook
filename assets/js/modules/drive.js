@@ -1,5 +1,5 @@
 // drive.js
-import { getToken } from './utils.js';
+import { getToken, performItemOperation } from './utils.js';
 
 let currentPath = '';
 let isGridView = false;

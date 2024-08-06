@@ -5,7 +5,7 @@ import { process3DModelData } from './modelProcessor.js';
 import { createProgressBar, removeProgressBar, fetchWithProgress } from './progressBar.js';
 
 let currentUser = null;
-const Quill = window.Quill;
+const { Quill } = window;
 let quill;
 let currentCategory = '';
 let currentSortColumn = 'timestamp'; // 기본 정렬 컬럼
@@ -14,7 +14,7 @@ let postsData = []; // 전체 게시글 데이터를 저장할 배열
 
 export function initPosts() {
     // 게시글 관련 초기화 코드
-    document.getElementById('comment-form').addEventListener('submit', submitComment);
+    //document.getElementById('comment-form').addEventListener('submit', submitComment);
 }
 export async function loadPosts(category) {
     currentCategory = category;
@@ -45,7 +45,7 @@ export async function loadPosts(category) {
             return;
         }
 
-        renderPosts(postsData);
+        renderPosts(postsData, category);
     } catch (error) {
         console.error('Error:', error);
         postsContainer.innerHTML = `
@@ -287,74 +287,131 @@ export async function deletePost(id) {
         alert('Error: ' + error);
     }
 }
-
+let isWriteMode = false;
 export function writePost() {
+    if (isWriteMode) {
+        return; // 이미 작성 모드라면 아무것도 하지 않음
+    }
+    isWriteMode = true;
+    // 게시글 작성 버튼 숨기기
+    const writeButton = document.querySelector('input[value="게시글 작성"]');
+    if (writeButton) {
+        writeButton.style.display = 'none';
+    }
 
-
-    var form = document.getElementById('form1');
+    const form = document.getElementById('form1');
     form.style.display = 'block';
-    // 카테고리 선택 옵션 추가
-    var categorySelect = document.createElement('select');
-    categorySelect.id = 'post-category';
-    categorySelect.innerHTML = `
-        <option value="">Select Category</option>
-        <option value="general">General</option>
-        <option value="news">News</option>
-        <option value="tech">Technology</option>
-        <option value="science">Science</option>
-    `;
-    form.insertBefore(categorySelect, form.firstChild);
+    // 카테고리 선택 옵션 추가 또는 재사용
+    let categorySelect = document.getElementById('post-category2');
+    if (!categorySelect) {
+        categorySelect = document.createElement('select');
+        categorySelect.id = 'post-category2';
+        categorySelect.innerHTML = `
+                <option value="">Select Category</option>
+                <option value="general">General</option>
+                <option value="news">News</option>
+                <option value="tech">Technology</option>
+                <option value="science">Science</option>
+            `;
+        form.insertBefore(categorySelect, form.firstChild);
+    } else {
+        categorySelect.value = ''; // 선택 초기화
+    }
+    // 취소 버튼 추가 또는 재사용
+    let cancelButton = document.getElementById('cancel-write-post');
+    if (!cancelButton) {
+        cancelButton = document.createElement('input');
+        cancelButton.type = 'button';
+        cancelButton.value = '취소';
+        cancelButton.id = 'cancel-write-post';
+        cancelButton.onclick = cancelWritePost;
+        form.appendChild(cancelButton);
+    }
 
-    // Define custom icon
-    var icons = Quill.import('ui/icons');
-    icons['upload-3d'] = '<strong>3D</strong>';
+    if (!quill) {
+        // Define custom icon
+        let icons = Quill.import('ui/icons');
+        icons['upload-3d'] = '<strong>3D</strong>';
 
-    quill = new Quill('#editor-container', {
-        modules: {
-            toolbar: {
-                container: [
-                    [{ 'font': [] }, { 'size': [] }],
-                    ['bold', 'italic', 'underline', 'strike'],
-                    [{ 'color': [] }, { 'background': [] }],
-                    [{ 'script': 'sub' }, { 'script': 'super' }],
-                    [{ 'header': '1' }, { 'header': '2' }, 'blockquote', 'code-block'],
-                    [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
-                    [{ 'direction': 'rtl' }, { 'align': [] }],
-                    ['link', 'image', 'video', 'formula'],
-                    ['upload-3d'], // Custom button for 3D model upload
-                    ['clean']
+        quill = new Quill('#editor-container', {
+            modules: {
+                toolbar: {
+                    container: [
+                        [{ 'font': [] }, { 'size': [] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'color': [] }, { 'background': [] }],
+                        [{ 'script': 'sub' }, { 'script': 'super' }],
+                        [{ 'header': '1' }, { 'header': '2' }, 'blockquote', 'code-block'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
+                        [{ 'direction': 'rtl' }, { 'align': [] }],
+                        ['link', 'image', 'video', 'formula'],
+                        ['upload-3d'], // Custom button for 3D model upload
+                        ['clean']
 
-                ],
-                handlers: {
-                    'upload-3d': function () {
-                        select3DFile();
+                    ],
+                    handlers: {
+                        'upload-3d': function () {
+                            select3DFile();
+                        }
                     }
-                }
+                },
             },
-        },
-        theme: 'snow'
-    });
+            theme: 'snow'
+        });
+
+    } else {
+        // 기존 에디터 내용 초기화
+        quill.setText('');
+    }
     // 전역 quill 변수에 할당 (window 객체를 통해)
     //window.quill = quill;
 }
+function cancelWritePost() {
+    isWriteMode = false;
+
+    // 게시글 작성 버튼 다시 표시
+    const writeButton = document.querySelector('input[value="게시글 작성"]');
+    if (writeButton) {
+        writeButton.style.display = 'inline-block';
+    }
+
+    // 폼 숨기기
+    var form = document.getElementById('form1');
+    form.style.display = 'none';
+
+    // 입력 필드 초기화
+    document.getElementById('name').value = '';
+    if (document.getElementById('post-category2')) {
+        document.getElementById('post-category2').value = '';
+    }
+    if (quill) {
+        quill.setText('');
+    }
+}
+
 export async function savePost() {
-    if (!isEditorInitialized()) return;
-    if (!isUserLoggedIn()) return;
+    if (!isEditorInitialized()) {
+        return;
+    }
+    if (!isUserLoggedIn()) {
+        return;
+    }
 
     try {
         const postData = await preparePostData();
         await uploadPost(postData);
         handlePostSaveSuccess();
+        cancelWritePost(); // 저장 성공 후 작성 모드 종료
     } catch (error) {
         handlePostSaveError(error);
     }
 }
 // 3D 모델 삽입 관련 함수들
 export function select3DFile() {
-    var input = document.createElement('input');
+    let input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
-    input.accept = '.obj,.mtl,.stl,.png,.jpg,.jpeg';
+    input.accept = '.obj,.mtl,.stl,.3ds,.png,.jpg,.jpeg';
     input.onchange = function (event) {
         var files = event.target.files;
         if (files.length > 0) {
@@ -364,18 +421,23 @@ export function select3DFile() {
     input.click();
 }
 export async function load3DModel(files) {
-    // index4.html의 load3DModel 함수 내용을 여기로 옮깁니다.
-    // quill 객체 사용 시 window.quill로 접근합니다.
-    let objFile, mtlFile, stlFile, textureFiles = [];
+    let objFile, mtlFile, stlFile, tdsFile, textureFiles = [];
     for (let file of files) {
-        if (file.name.endsWith('.obj')) objFile = file;
-        else if (file.name.endsWith('.mtl')) mtlFile = file;
-        else if (file.name.endsWith('.stl')) stlFile = file;
-        else if (/\.(png|jpg|jpeg)$/i.test(file.name)) textureFiles.push(file);
+        if (file.name.endsWith('.obj')) {
+            objFile = file;
+        } else if (file.name.endsWith('.mtl')) {
+            mtlFile = file;
+        } else if (file.name.endsWith('.stl')) {
+            stlFile = file;
+        } else if (file.name.endsWith('.3ds')) {
+            tdsFile = file;
+        } else if (/\.(png|jpg|jpeg)$/i.test(file.name)) {
+            textureFiles.push(file);
+        }
     }
 
-    if (!objFile && !stlFile) {
-        alert('Either OBJ or STL file is required.');
+    if (!objFile && !stlFile && !tdsFile) {
+        alert('Either OBJ, STL, or 3DS file is required.');
         return;
     }
 
@@ -389,11 +451,13 @@ export async function load3DModel(files) {
         if (objFile) {
             modelContent = await readFile(objFile);
             modelType = 'obj';
-        } else {
-            // modelContent = await readFile(stlFile);
+          } else if (stlFile) {
             modelContent = await readFile(stlFile, 'arraybuffer');
             modelType = 'stl';
-        }
+          } else if (tdsFile) {
+            modelContent = await readFile(tdsFile, 'arraybuffer');
+            modelType = '3ds';
+          }
 
         let mtlContent = null;
         let textureContents = [];
@@ -420,9 +484,14 @@ export async function load3DModel(files) {
 
         // Set attributes for OBJ file
 
+        
         canvasContainer.setAttribute('data-model-type', modelType);
-        canvasContainer.setAttribute('data-model-filename', modelType === 'obj' ? objFile.name : stlFile.name);
-
+        canvasContainer.setAttribute('data-model-filename', 
+          modelType === 'obj' ? objFile.name : 
+          modelType === 'stl' ? stlFile.name : 
+          tdsFile.name
+        );
+        
         if (modelType === 'obj') {
             canvasContainer.setAttribute('data-model-file', modelContent);
             if (mtlContent) {
@@ -509,22 +578,24 @@ export async function loadCategories() {
         if (!response.ok) {
             throw new Error('Failed to fetch categories');
         }
-        const categories = await response.json();
-        renderCategories(categories);
+        return await response.json();
     } catch (error) {
-        console.error('Error:', error);
-        alert('Error loading categories: ' + error.message);
+        console.error('Error loading categories:', error);
+        throw error;
     }
 }
-function renderCategories(categories) {
-    const categoriesContainer = document.getElementById('categories-container');
-    categoriesContainer.innerHTML = '';
+
+export function renderCategories(categories, container) {
+    container.innerHTML = '';
+    const fragment = document.createDocumentFragment();
     categories.forEach(category => {
         const categoryElement = document.createElement('button');
         categoryElement.textContent = category;
-        categoryElement.onclick = () => loadPosts(category);
-        categoriesContainer.appendChild(categoryElement);
+        categoryElement.classList.add('category-button');
+        categoryElement.dataset.category = category;
+        fragment.appendChild(categoryElement);
     });
+    container.appendChild(fragment);
 }
 function readFile(file, readAs = 'text') {
     return new Promise((resolve, reject) => {
@@ -558,7 +629,7 @@ function isUserLoggedIn() {
 async function preparePostData() {
     const username = await verifyToken(getToken());
     const title = getPostTitle();
-    const category = document.getElementById('post-category').value;
+    const category = document.getElementById('post-category2').value;
     let content = quill.root.innerHTML;
 
     //console.log('Original content:', content); // 추가된 로그
@@ -608,7 +679,18 @@ function handlePostSaveError(error) {
     console.error('Error:', error);
     alert('Error: ' + error.message);
 }
+function formatTimestamp(timestamp) {
+    // MySQL datetime 문자열을 파싱
+    const parts = timestamp.split(/[- :]/);
+    // JavaScript의 Date 객체는 월을 0-11로 처리하므로 1을 빼줍니다.
+    const date = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
 
+    // 브라우저의 로컬 시간대로 변환
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+
+    // 원하는 형식으로 날짜 포맷
+    return localDate.toLocaleString(); // 또는 원하는 다른 포맷 메서드 사용
+}
 export function loadComments(postId) {
     // loadComments 함수 구현
     fetch(`/comments?postId=${postId}`)
@@ -618,9 +700,10 @@ export function loadComments(postId) {
             commentsContainer.innerHTML = '';
             if (data.comments && Array.isArray(data.comments)) {
                 data.comments.forEach(comment => {
-                    const timestamp = parseInt(comment.timestamp); // Convert timestamp string to integer
-                    const date = new Date(timestamp); // Create a Date object
+                    // const timestamp = parseInt(comment.timestamp); // Convert timestamp string to integer
+                    // const date = new Date(timestamp); // Create a Date object
 
+                    const date = formatTimestamp(comment.timestamp);
                     const commentElement = document.createElement('div');
                     commentElement.className = 'comment';
                     commentElement.innerHTML = `
@@ -646,8 +729,9 @@ export function loadComments(postId) {
 
 export async function submitComment(event) {
     // submitComment 함수 구현
+    console.log('call submitComment()');
     event.preventDefault(); // Prevent form from submitting the default way
-    const postId = document.getElementById('post-content').dataset.postId;
+    const { postId } = document.getElementById('post-content').dataset;
     const commentText = document.getElementById('comment-text').value;
 
     const token = getToken();
@@ -662,9 +746,10 @@ export async function submitComment(event) {
         const commentData = {
             postId: postId,
             commentText: commentText,
-            author: username
+            author: username,
+            // timestamp: new Date().toISOString()
         };
-
+        console.log(commentData);
         const response = await fetch('/add_comment', {
             method: 'POST',
             headers: {
@@ -761,8 +846,12 @@ function renderSortedPosts() {
             valueB = new Date(valueB);
         }
 
-        if (valueA < valueB) return currentSortOrder === 'asc' ? -1 : 1;
-        if (valueA > valueB) return currentSortOrder === 'asc' ? 1 : -1;
+        if (valueA < valueB) {
+            return currentSortOrder === 'asc' ? -1 : 1;
+        }
+        if (valueA > valueB) {
+            return currentSortOrder === 'asc' ? 1 : -1;
+        }
         return 0;
     });
 
@@ -777,10 +866,10 @@ function renderSortedPosts() {
         activeButton.textContent = currentSortOrder === 'asc' ? '↑' : '↓';
     }
 
-    renderPosts(sortedPosts);
+    renderPosts(sortedPosts, category);
 }
 
-function renderPosts(posts) {
+function renderPosts(posts, category) {
     const postsContainer = document.getElementById('posts-container');
     postsContainer.innerHTML = '';
 
@@ -795,7 +884,7 @@ function renderPosts(posts) {
         row.innerHTML = `
             <td class="py-2 px-2 sm:px-4 border-b">
                 <a href="#" class="text-blue-600 hover:text-blue-800" 
-                onclick="showPostContent('${post.id}', '${post.title}', '${decodedAuthor}', '${formattedTimestamp}', '${encodedContent}'); return false;">
+                onclick="showPostContent('${post.id}', '${post.title}', '${decodedAuthor}', '${formattedTimestamp}', '${encodedContent}', '${category}'); return false;">
                     ${post.title}
                 </a>
             </td>

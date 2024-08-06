@@ -1,0 +1,191 @@
+function select3DFiles() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.obj,.mtl,.png,.jpg,.jpeg';
+    input.onchange = function (event) {
+        var files = event.target.files;
+        if (files.length > 0) {
+            load3DModel(files);
+        }
+    };
+    input.click();
+}
+
+async function load3DModel(files) {
+    let objFile, mtlFile, textureFiles = [];
+    for (let file of files) {
+        if (file.name.endsWith('.obj')) objFile = file;
+        else if (file.name.endsWith('.mtl')) mtlFile = file;
+        else if (/\.(png|jpg|jpeg)$/i.test(file.name)) textureFiles.push(file);
+    }
+
+    if (!objFile) {
+        alert('OBJ file is required.');
+        return;
+    }
+
+    try {
+        const objUrl = await uploadFile(objFile);
+        let mtlUrl = null;
+        let textureUrls = [];
+
+        if (mtlFile) {
+            mtlUrl = await uploadFile(mtlFile);
+        }
+
+        for (let textureFile of textureFiles) {
+            const textureUrl = await uploadFile(textureFile);
+            textureUrls.push(textureUrl);
+        }
+
+        // Create a container for the canvas
+        var canvasContainer = document.createElement('div');
+        canvasContainer.style.width = '100%';
+        canvasContainer.style.height = '400px';
+        canvasContainer.style.position = 'relative';
+        canvasContainer.style.background = '#f0f0f0';
+        canvasContainer.style.marginTop = '10px';
+        canvasContainer.setAttribute('data-obj-url', objUrl);
+        if (mtlUrl) canvasContainer.setAttribute('data-mtl-url', mtlUrl);
+        if (textureUrls.length > 0) canvasContainer.setAttribute('data-texture-urls', JSON.stringify(textureUrls));
+
+        // Create a canvas element to render the 3D model
+        var canvas = document.createElement('canvas');
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvasContainer.appendChild(canvas);
+
+        // Create a block blot for the canvas container
+        var Block = Quill.import('blots/block/embed');
+        class CanvasBlot extends Block {
+            static create(value) {
+                let node = super.create();
+                node.setAttribute('style', value.style);
+                node.setAttribute('data-obj-url', value.dataObjUrl);
+                if (value.dataMtlUrl) node.setAttribute('data-mtl-url', value.dataMtlUrl);
+                if (value.dataTextureUrls) node.setAttribute('data-texture-urls', JSON.stringify(value.dataTextureUrls));
+                node.innerHTML = '<canvas style="width: 100%; height: 100%;"></canvas>';
+                return node;
+            }
+            static value(node) {
+                return {
+                    style: node.getAttribute('style'),
+                    dataObjUrl: node.getAttribute('data-obj-url'),
+                    dataMtlUrl: node.getAttribute('data-mtl-url'),
+                    dataTextureUrls: JSON.parse(node.getAttribute('data-texture-urls') || '[]')
+                };
+            }
+        }
+        CanvasBlot.blotName = 'canvas';
+        CanvasBlot.tagName = 'div';
+        Quill.register(CanvasBlot);
+
+        // Insert the canvas container as a block blot
+        var range = quill.getSelection(true);
+        quill.insertEmbed(range.index, 'canvas', {
+            style: canvasContainer.getAttribute('style'),
+            dataObjUrl: objUrl,
+            dataMtlUrl: mtlUrl,
+            dataTextureUrls: textureUrls
+        });
+
+        // 3D 모델 렌더링
+        setTimeout(() => {
+            var canvasElements = document.querySelectorAll('canvas');
+            var lastCanvas = canvasElements[canvasElements.length - 1];
+            render3DModel(lastCanvas, objUrl, mtlUrl, textureUrls);
+        }, 100);
+    } catch (error) {
+        console.error('Error loading 3D model:', error);
+        alert('Failed to load 3D model: ' + error.message);
+    }
+}
+
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/upload_file', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (response.ok) {
+        const data = await response.json();
+        return data.url;
+    } else {
+        throw new Error('Failed to upload file: ' + file.name);
+    }
+}
+
+function render3DModel(canvas, objUrl, mtlUrl, textureUrls) {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.25;
+    controls.screenSpacePanning = false;
+    controls.maxPolarAngle = Math.PI / 2;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 5, 5).normalize();
+    scene.add(directionalLight);
+
+    const loader = new THREE.OBJLoader();
+    if (mtlUrl) {
+        const mtlLoader = new THREE.MTLLoader();
+        mtlLoader.load(mtlUrl, (materials) => {
+            materials.preload();
+            loader.setMaterials(materials);
+            loadObj();
+        });
+    } else {
+        loadObj();
+    }
+
+    function loadObj() {
+        loader.load(objUrl, (object) => {
+            scene.add(object);
+            fitCameraToObject(camera, object, controls);
+            animate();
+        });
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    function fitCameraToObject(camera, object, controls) {
+        const box = new THREE.Box3().setFromObject(object);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fov = camera.fov * (Math.PI / 180);
+        let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+        cameraZ *= 1.5;
+        camera.position.z = cameraZ;
+        const minZ = box.min.z;
+        const cameraToFarEdge = (minZ < 0) ? -minZ + cameraZ : cameraZ - minZ;
+        camera.far = cameraToFarEdge * 3;
+        camera.updateProjectionMatrix();
+        if (controls) {
+            controls.target = center;
+            controls.maxDistance = cameraToFarEdge * 2;
+        }
+    }
+
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+        camera.aspect = canvas.clientWidth / canvas.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    }
+}

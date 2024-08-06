@@ -10,18 +10,17 @@
 #include <signal.h>
 #include <errno.h> // errno 사용을 위해
 #include <unordered_map>
-#include <sqlite3.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <map>
-#include <json/json.h>
+#include <jsoncpp/json/json.h>
 #include <algorithm>
 #include <functional>
 #include <regex>
 #include <random>
+#include "nlohmann/json.hpp"
 #include <filesystem>
-#include "header/json.hpp"
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <openssl/ssl.h>
@@ -30,6 +29,13 @@
 #include <chrono>
 #include <ctime>
 #include <syslog.h>
+#include <mutex>
+#include <mysql/mysql.h>
+#include <cppconn/driver.h>
+#include <cppconn/exception.h>
+#include <cppconn/resultset.h>
+#include <cppconn/statement.h>
+#include <cppconn/prepared_statement.h>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -40,12 +46,123 @@ SSL *ssl;
 
 // 사용자 데이터를 저장할 간단한 해시맵
 std::unordered_map<std::string, std::string> user_data;
-// SQLite 데이터베이스 연결 객체
-sqlite3 *db;
+
 const std::string UPLOAD_DIR = "uploads/";
 const std::string UPLOAD_IMAGE_DIR = "images/";
 const std::string UPLOAD_OBJ_DIR = "uploads/objs/"; // .obj 파일을 저장할 디렉토리 경로
 const std::string UPLOAD_ROOT_DIR = "./";
+
+sql::Connection *get_connection()
+{
+    try
+    {
+        sql::Driver *driver;
+        sql::Connection *con;
+
+        driver = get_driver_instance();
+        con = driver->connect("tcp://database-1.chkaiiwsimts.us-east-2.rds.amazonaws.com:3306", "admin", "Yonghwan2161!");
+        con->setSchema("app_db");
+
+        return con;
+    }
+    catch (sql::SQLException &e)
+    {
+        std::cout << "SQL Exception: " << e.what() << std::endl;
+        return nullptr;
+    }
+}
+void complex_operation()
+{
+    sql::Connection *con = get_connection();
+    if (!con)
+        return;
+
+    try
+    {
+        con->setAutoCommit(false);
+        sql::Statement *stmt = con->createStatement();
+
+        stmt->execute("INSERT INTO ...");
+        stmt->execute("UPDATE ...");
+
+        con->commit();
+
+        delete stmt;
+        delete con;
+    }
+    catch (sql::SQLException &e)
+    {
+        std::cerr << "SQL Exception: " << e.what() << std::endl;
+        con->rollback();
+        delete con;
+    }
+}
+class ConnectionPool {
+private:
+    std::vector<std::unique_ptr<sql::Connection>> connections;
+    std::mutex mutex;
+    std::condition_variable cv;
+    size_t pool_size;
+    std::string server, username, password, database;
+
+    sql::Driver* driver;
+
+public:
+    ConnectionPool(size_t size, const std::string& server, const std::string& username, 
+                   const std::string& password, const std::string& database)
+        : pool_size(size), server(server), username(username), password(password), database(database) {
+        driver = get_driver_instance();
+        for (size_t i = 0; i < pool_size; ++i) {
+            connections.push_back(createConnection());
+        }
+    }
+
+    std::unique_ptr<sql::Connection> getConnection() {
+        std::unique_lock<std::mutex> lock(mutex);
+        while (connections.empty()) {
+            cv.wait(lock);
+        }
+        auto conn = std::move(connections.back());
+        connections.pop_back();
+        return conn;
+    }
+
+    void releaseConnection(std::unique_ptr<sql::Connection> conn) {
+        std::unique_lock<std::mutex> lock(mutex);
+        connections.push_back(std::move(conn));
+        lock.unlock();
+        cv.notify_one();
+    }
+
+private:
+    std::unique_ptr<sql::Connection> createConnection() {
+        std::unique_ptr<sql::Connection> conn(driver->connect(server, username, password));
+        conn->setSchema(database);
+        return conn;
+    }
+};
+
+// 전역 ConnectionPool 인스턴스
+std::unique_ptr<ConnectionPool> connectionPool;
+// 데이터베이스 작업을 위한 헬퍼 함수
+template<typename Func>
+auto withConnection(Func f) -> decltype(f(std::declval<sql::Connection&>()))
+{
+    auto conn = connectionPool->getConnection();
+    try {
+        if constexpr (std::is_void_v<decltype(f(*conn))>) {
+            f(*conn);
+            connectionPool->releaseConnection(std::move(conn));
+        } else {
+            auto result = f(*conn);
+            connectionPool->releaseConnection(std::move(conn));
+            return result;
+        }
+    } catch (...) {
+        connectionPool->releaseConnection(std::move(conn));
+        throw;
+    }
+}
 
 const std::string base64_chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -331,74 +448,7 @@ std::unordered_map<std::string, std::string> parse_urlencoded(const std::string 
     }
     return params;
 }
-class DatabaseConnectionPool
-{
-private:
-    std::vector<sqlite3 *> connections;
-    std::vector<bool> inUse;
-    std::mutex mutex;
-    std::condition_variable cv;
-    size_t poolSize;
-    const char *dbName;
 
-public:
-    DatabaseConnectionPool(const char *dbName, size_t poolSize)
-        : poolSize(poolSize), dbName(dbName)
-    {
-        for (size_t i = 0; i < poolSize; ++i)
-        {
-            sqlite3 *db;
-            if (sqlite3_open(dbName, &db) == SQLITE_OK)
-            {
-                connections.push_back(db);
-                inUse.push_back(false);
-            }
-            else
-            {
-                std::cerr << "Failed to open database connection" << std::endl;
-            }
-        }
-    }
-
-    ~DatabaseConnectionPool()
-    {
-        for (auto &db : connections)
-        {
-            sqlite3_close(db);
-        }
-    }
-
-    sqlite3 *getConnection()
-    {
-        std::unique_lock<std::mutex> lock(mutex);
-        cv.wait(lock, [this]()
-                { return std::find(inUse.begin(), inUse.end(), false) != inUse.end(); });
-
-        auto it = std::find(inUse.begin(), inUse.end(), false);
-        if (it != inUse.end())
-        {
-            size_t index = std::distance(inUse.begin(), it);
-            inUse[index] = true;
-            return connections[index];
-        }
-        return nullptr;
-    }
-
-    void releaseConnection(sqlite3 *db)
-    {
-        std::unique_lock<std::mutex> lock(mutex);
-        auto it = std::find(connections.begin(), connections.end(), db);
-        if (it != connections.end())
-        {
-            size_t index = std::distance(connections.begin(), it);
-            inUse[index] = false;
-        }
-        cv.notify_one();
-    }
-};
-
-// 전역 변수로 연결 풀 선언
-DatabaseConnectionPool connectionPool("users.db", 10);
 // 비밀번호 해싱 함수
 std::string hash_password(const std::string &password, const std::string &salt)
 {
@@ -418,464 +468,168 @@ std::string hash_password(const std::string &password, const std::string &salt)
 
 void migrate_passwords()
 {
-    const char *sql_select = "SELECT ID, USERNAME, PASSWORD FROM USERS WHERE SALT IS NULL;";
-    const char *sql_update = "UPDATE USERS SET PASSWORD = ?, SALT = ? WHERE ID = ?;";
-    sqlite3_stmt *select_stmt, *update_stmt;
-
-    int rc = sqlite3_prepare_v2(db, sql_select, -1, &select_stmt, 0);
-    if (rc != SQLITE_OK)
+    try
     {
-        std::cerr << "Failed to prepare select statement: " << sqlite3_errmsg(db) << std::endl;
-        return;
-    }
+        withConnection([](sql::Connection& con) {
+            // Select users with null salt
+            std::unique_ptr<sql::PreparedStatement> select_pstmt(con.prepareStatement(
+                "SELECT ID, USERNAME, PASSWORD FROM USERS WHERE SALT IS NULL"));
+            std::unique_ptr<sql::ResultSet> select_res(select_pstmt->executeQuery());
 
-    rc = sqlite3_prepare_v2(db, sql_update, -1, &update_stmt, 0);
-    if (rc != SQLITE_OK)
+            // Prepare update statement
+            std::unique_ptr<sql::PreparedStatement> update_pstmt(con.prepareStatement(
+                "UPDATE USERS SET PASSWORD = ?, SALT = ? WHERE ID = ?"));
+
+            while (select_res->next())
+            {
+                int id = select_res->getInt("ID");
+                std::string username = select_res->getString("USERNAME");
+                std::string old_password = select_res->getString("PASSWORD");
+
+                std::string salt = generate_salt();
+                std::string hashed_password = hash_password(old_password, salt);
+
+                update_pstmt->setString(1, hashed_password);
+                update_pstmt->setString(2, salt);
+                update_pstmt->setInt(3, id);
+
+                int affected_rows = update_pstmt->executeUpdate();
+
+                if (affected_rows == 1)
+                {
+                    std::cout << "Successfully migrated password for user " << username << std::endl;
+                }
+                else
+                {
+                    std::cerr << "Failed to update password for user " << username << std::endl;
+                }
+            }
+
+            std::cout << "Password migration completed." << std::endl;
+        });
+    }
+    catch (const sql::SQLException& e)
     {
-        std::cerr << "Failed to prepare update statement: " << sqlite3_errmsg(db) << std::endl;
-        sqlite3_finalize(select_stmt);
-        return;
+        std::cerr << "SQL Exception: " << e.what() << std::endl;
     }
-
-    while (sqlite3_step(select_stmt) == SQLITE_ROW)
+    catch (const std::exception& e)
     {
-        int id = sqlite3_column_int(select_stmt, 0);
-        std::string username = reinterpret_cast<const char *>(sqlite3_column_text(select_stmt, 1));
-        std::string old_password = reinterpret_cast<const char *>(sqlite3_column_text(select_stmt, 2));
-
-        std::string salt = generate_salt();
-        std::string hashed_password = hash_password(old_password, salt);
-
-        sqlite3_bind_text(update_stmt, 1, hashed_password.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(update_stmt, 2, salt.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_int(update_stmt, 3, id);
-
-        if (sqlite3_step(update_stmt) != SQLITE_DONE)
-        {
-            std::cerr << "Failed to update password for user " << username << std::endl;
-        }
-        else
-        {
-            std::cout << "Successfully migrated password for user " << username << std::endl;
-        }
-
-        sqlite3_reset(update_stmt);
+        std::cerr << "Exception: " << e.what() << std::endl;
     }
-
-    sqlite3_finalize(select_stmt);
-    sqlite3_finalize(update_stmt);
-
-    std::cout << "Password migration completed." << std::endl;
 }
 // 데이터베이스 초기화 함수
 void init_database()
 {
-    int rc = sqlite3_open("users.db", &db);
-    if (rc)
+        connectionPool = std::make_unique<ConnectionPool>(
+        10, "tcp://database-1.chkaiiwsimts.us-east-2.rds.amazonaws.com:3306", 
+        "admin", "Yonghwan2161!", "app_db"
+    );
+
+    sql::Connection *con = get_connection();
+    if (!con)
     {
-        std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "Failed to connect to database" << std::endl;
         exit(1);
     }
-    else
-    {
-        std::cout << "Opened database successfully" << std::endl;
-    }
 
-    const char *sql_create_users_table =
-        "CREATE TABLE IF NOT EXISTS USERS ("
-        "ID INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "USERNAME TEXT NOT NULL UNIQUE, "
-        "PASSWORD TEXT NOT NULL, "
-        "SALT TEXT);";
-
-    const char *sql_create_posts_table =
-        "CREATE TABLE IF NOT EXISTS posts ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "title TEXT NOT NULL, "
-        "content TEXT NOT NULL, "
-        "author TEXT NOT NULL, "
-        "timestamp TEXT NOT NULL,"
-        "category TEXT NOT NULL);"; // 카테고리 컬럼 추가
-
-    const char *sql_create_comments_table =
-        "CREATE TABLE IF NOT EXISTS comments ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "post_id INTEGER NOT NULL, "
-        "author TEXT NOT NULL, "
-        "content TEXT NOT NULL, "
-        "timestamp TEXT NOT NULL, "
-        "FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE);";
-
-    char *err_msg = nullptr;
-
-    rc = sqlite3_exec(db, sql_create_users_table, 0, 0, &err_msg);
-    if (rc != SQLITE_OK)
+    try
     {
-        std::cerr << "SQL error: " << err_msg << std::endl;
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        exit(1);
-    }
-    else
-    {
-        std::cout << "Users table created successfully" << std::endl;
-    }
+        sql::Statement *stmt = con->createStatement();
 
-    rc = sqlite3_exec(db, sql_create_posts_table, 0, 0, &err_msg);
-    if (rc != SQLITE_OK)
-    {
-        std::cerr << "SQL error: " << err_msg << std::endl;
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        exit(1);
-    }
-    else
-    {
-        std::cout << "Posts table created successfully" << std::endl;
-    }
+        stmt->execute("CREATE TABLE IF NOT EXISTS USERS ("
+                      "ID INT AUTO_INCREMENT PRIMARY KEY, "
+                      "USERNAME VARCHAR(255) NOT NULL UNIQUE, "
+                      "PASSWORD VARCHAR(255) NOT NULL, "
+                      "SALT VARCHAR(255))");
 
-    rc = sqlite3_exec(db, sql_create_comments_table, 0, 0, &err_msg);
-    if (rc != SQLITE_OK)
-    {
-        std::cerr << "SQL error: " << err_msg << std::endl;
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        exit(1);
-    }
-    else
-    {
-        std::cout << "Comments table created successfully" << std::endl;
-    }
+        stmt->execute("CREATE TABLE IF NOT EXISTS posts ("
+                      "id INT AUTO_INCREMENT PRIMARY KEY, "
+                      "title VARCHAR(255) NOT NULL, "
+                      "content TEXT NOT NULL, "
+                      "author VARCHAR(255) NOT NULL, "
+                      "timestamp DATETIME NOT NULL,"
+                      "category VARCHAR(255) NOT NULL DEFAULT 'Uncategorized')");
 
-    // Check if 'timestamp' column exists in posts table
-    std::string sql_check_column = "PRAGMA table_info(posts);";
-    sqlite3_stmt *stmt;
-    rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
-    {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        exit(EXIT_FAILURE);
-    }
+        stmt->execute("CREATE TABLE IF NOT EXISTS comments ("
+                      "id INT AUTO_INCREMENT PRIMARY KEY, "
+                      "post_id INT NOT NULL, "
+                      "author VARCHAR(255) NOT NULL, "
+                      "content TEXT NOT NULL, "
+                      "timestamp DATETIME NOT NULL, "
+                      "FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE)");
 
-    bool timestamp_exists = false;
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
-        std::string column_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-        if (column_name == "timestamp")
+        // Check if 'timestamp' column exists in posts table
+        sql::ResultSet *res = stmt->executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                                                 "WHERE TABLE_NAME = 'posts' AND COLUMN_NAME = 'timestamp'");
+        res->next();
+        bool timestamp_exists = res->getInt(1) > 0;
+        delete res;
+
+        // Add 'timestamp' column if it does not exist
+        if (!timestamp_exists)
         {
-            timestamp_exists = true;
-            break;
+            stmt->execute("ALTER TABLE posts ADD COLUMN timestamp DATETIME");
         }
-    }
-    sqlite3_finalize(stmt);
 
-    // Add 'timestamp' column if it does not exist
-    if (!timestamp_exists)
-    {
-        std::string sql_add_column = "ALTER TABLE posts ADD COLUMN timestamp TEXT;";
-        rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &err_msg);
-        if (rc != SQLITE_OK)
-        {
-            std::cerr << "SQL error (add column): " << err_msg << std::endl;
-            sqlite3_free(err_msg);
-            exit(EXIT_FAILURE);
-        }
-    }
+        // Check if we need to migrate passwords
+        res = stmt->executeQuery("SELECT COUNT(*) FROM USERS WHERE SALT IS NULL");
+        res->next();
+        int count = res->getInt(1);
+        delete res;
 
-    // Check if we need to migrate passwords
-    const char *sql_check_salt = "SELECT COUNT(*) FROM USERS WHERE SALT IS NULL;";
-    // sqlite3_stmt *stmt;
-    rc = sqlite3_prepare_v2(db, sql_check_salt, -1, &stmt, 0);
-    if (rc != SQLITE_OK)
-    {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        return;
-    }
-
-    rc = sqlite3_step(stmt);
-    if (rc == SQLITE_ROW)
-    {
-        int count = sqlite3_column_int(stmt, 0);
         if (count > 0)
         {
             std::cout << "Migrating " << count << " password(s) to new hashing scheme..." << std::endl;
-            migrate_passwords();
+            migrate_passwords(); // You'll need to implement this function for MySQL
         }
-    }
-    sqlite3_finalize(stmt);
 
-    // 'category' 컬럼이 존재하는지 확인
-    sql_check_column = "PRAGMA table_info(posts);";
-    // sqlite3_stmt *stmt;
-    rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
+        delete stmt;
+        delete con;
+
+        std::cout << "Database initialization completed." << std::endl;
+    }
+    catch (sql::SQLException &e)
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        exit(EXIT_FAILURE);
+        std::cerr << "SQL Exception: " << e.what() << std::endl;
+        delete con;
+        exit(1);
     }
-
-    bool category_exists = false;
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
-        std::string column_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-        if (column_name == "category")
-        {
-            category_exists = true;
-            break;
-        }
-    }
-    sqlite3_finalize(stmt);
-
-    // 'category' 컬럼이 존재하지 않으면 추가
-    if (!category_exists)
-    {
-        std::string sql_add_column = "ALTER TABLE posts ADD COLUMN category TEXT DEFAULT 'Uncategorized';";
-        rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &err_msg);
-        if (rc != SQLITE_OK)
-        {
-            std::cerr << "SQL error (add column): " << err_msg << std::endl;
-            sqlite3_free(err_msg);
-            exit(EXIT_FAILURE);
-        }
-        else
-        {
-            std::cout << "Added 'category' column to posts table" << std::endl;
-        }
-    }
-
-    std::cout << "Database initialization completed." << std::endl;
 }
-// void init_database()
-// {
-//     sqlite3 *db = connectionPool.getConnection();
-//     if (!db)
-//     {
-//         std::cerr << "Failed to get database connection for initialization" << std::endl;
-//         exit(1);
-//     }
-//     int rc = sqlite3_open("users copy.db", &db);
-//     if (rc)
-//     {
-//         std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
-//         exit(1);
-//     }
-//     else
-//     {
-//         std::cout << "Opened database successfully" << std::endl;
-//     }
-
-//     const char *sql_create_users_table =
-//         "CREATE TABLE IF NOT EXISTS USERS ("
-//         "ID INTEGER PRIMARY KEY AUTOINCREMENT, "
-//         "USERNAME TEXT NOT NULL, "
-//         "PASSWORD TEXT NOT NULL);";
-
-//     const char *sql_create_posts_table =
-//         "CREATE TABLE IF NOT EXISTS posts ("
-//         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-//         "title TEXT NOT NULL, "
-//         "content TEXT NOT NULL, "
-//         "author TEXT NOT NULL, "
-//         "timestamp TEXT NOT NULL);";
-
-//     const char *sql_create_comments_table =
-//         "CREATE TABLE IF NOT EXISTS comments ("
-//         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-//         "post_id INTEGER NOT NULL, "
-//         "author TEXT NOT NULL, "
-//         "content TEXT NOT NULL, "
-//         "timestamp TEXT NOT NULL, "
-//         "FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE);";
-
-//     char *err_msg = nullptr;
-
-//     rc = sqlite3_exec(db, sql_create_users_table, 0, 0, &err_msg);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "SQL error: " << err_msg << std::endl;
-//         sqlite3_free(err_msg);
-//         sqlite3_close(db);
-//         exit(1);
-//     }
-//     else
-//     {
-//         std::cout << "Users table created successfully" << std::endl;
-//     }
-
-//     rc = sqlite3_exec(db, sql_create_posts_table, 0, 0, &err_msg);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "SQL error: " << err_msg << std::endl;
-//         sqlite3_free(err_msg);
-//         connectionPool.releaseConnection(db);
-//         exit(1);
-//     }
-//     else
-//     {
-//         std::cout << "Posts table created successfully" << std::endl;
-//     }
-
-//     rc = sqlite3_exec(db, sql_create_comments_table, 0, 0, &err_msg);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "SQL error: " << err_msg << std::endl;
-//         sqlite3_free(err_msg);
-//         connectionPool.releaseConnection(db);
-//         exit(1);
-//     }
-//     else
-//     {
-//         std::cout << "Comments table created successfully" << std::endl;
-//     }
-
-//     // Check if 'timestamp' column exists in posts table
-//     std::string sql_check_column = "PRAGMA table_info(posts);";
-//     sqlite3_stmt *stmt;
-//     rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-//         exit(EXIT_FAILURE);
-//     }
-
-//     bool timestamp_exists = false;
-//     while (sqlite3_step(stmt) == SQLITE_ROW)
-//     {
-//         std::string column_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-//         if (column_name == "timestamp")
-//         {
-//             timestamp_exists = true;
-//             break;
-//         }
-//     }
-//     sqlite3_finalize(stmt);
-
-//     // Add 'timestamp' column if it does not exist
-//     if (!timestamp_exists)
-//     {
-//         std::string sql_add_column = "ALTER TABLE posts ADD COLUMN timestamp TEXT;";
-//         rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &err_msg);
-//         if (rc != SQLITE_OK)
-//         {
-//             std::cerr << "SQL error (add column): " << err_msg << std::endl;
-//             sqlite3_free(err_msg);
-//             exit(EXIT_FAILURE);
-//         }
-//     }
-//     connectionPool.releaseConnection(db);
-//     std::cout << "Database initialization completed successfully" << std::endl;
-// }
-// void init_database()
-// {
-//     int rc = sqlite3_open("users.db", &db);
-//     if (rc)
-//     {
-//         std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
-//         exit(1);
-//     }
-//     else
-//     {
-//         std::cout << "Opened database successfully" << std::endl;
-//     }
-//     const char *sql_create_users_table =
-//         "CREATE TABLE IF NOT EXISTS USERS ("
-//         "ID INTEGER PRIMARY KEY AUTOINCREMENT, "
-//         "USERNAME TEXT NOT NULL, "
-//         "PASSWORD TEXT NOT NULL);";
-//     const char *sql_create_posts_table =
-//         "CREATE TABLE IF NOT EXISTS posts ("
-//         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-//         "title TEXT NOT NULL, "
-//         "content TEXT NOT NULL, "
-//         "author TEXT NOT NULL, "
-//         "timestamp TEXT NOT NULL);";
-//     char *err_msg = nullptr;
-//     rc = sqlite3_exec(db, sql_create_users_table, 0, 0, &err_msg);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "SQL error: " << err_msg << std::endl;
-//         sqlite3_free(err_msg);
-//         sqlite3_close(db);
-//         exit(1);
-//     }
-//     else
-//     {
-//         std::cout << "Users table created successfully" << std::endl;
-//     }
-//     rc = sqlite3_exec(db, sql_create_posts_table, 0, 0, &err_msg);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "SQL error: " << err_msg << std::endl;
-//         sqlite3_free(err_msg);
-//         sqlite3_close(db);
-//         exit(1);
-//     }
-//     else
-//     {
-//         std::cout << "Posts table created successfully" << std::endl;
-//     }
-//     // Check if 'timestamp' column exists
-//     std::string sql_check_column = "PRAGMA table_info(posts);";
-//     sqlite3_stmt *stmt;
-//     rc = sqlite3_prepare_v2(db, sql_check_column.c_str(), -1, &stmt, 0);
-//     if (rc != SQLITE_OK)
-//     {
-//         std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-//         exit(EXIT_FAILURE);
-//     }
-//     bool timestamp_exists = false;
-//     while (sqlite3_step(stmt) == SQLITE_ROW)
-//     {
-//         std::string column_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-//         if (column_name == "timestamp")
-//         {
-//             timestamp_exists = true;
-//             break;
-//         }
-//     }
-//     sqlite3_finalize(stmt);
-//     char *error_message = 0;
-//     // Add 'timestamp' column if it does not exist
-//     if (!timestamp_exists)
-//     {
-//         std::string sql_add_column = "ALTER TABLE posts ADD COLUMN timestamp TEXT;";
-//         rc = sqlite3_exec(db, sql_add_column.c_str(), 0, 0, &error_message);
-//         if (rc != SQLITE_OK)
-//         {
-//             std::cerr << "SQL error (add column): " << error_message << std::endl;
-//             sqlite3_free(error_message);
-//             exit(EXIT_FAILURE);
-//         }
-//     }
-// }
-// 회원가입 요청을 처리하는 함수
 void handle_signup(SSL *ssl, const std::string &body)
 {
-    sqlite3 *db = connectionPool.getConnection();
     auto params = parse_urlencoded(body);
     if (params.find("username") != params.end() && params.find("password") != params.end())
     {
         std::string username = params["username"];
         std::string password = params["password"];
 
-        // 데이터베이스에 사용자 데이터를 저장
-        const char *sql_insert = "INSERT INTO USERS (USERNAME, PASSWORD) VALUES (?, ?);";
-        sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db, sql_insert, -1, &stmt, 0);
-        if (rc == SQLITE_OK)
-        {
-            sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 2, password.c_str(), -1, SQLITE_STATIC);
+        // 솔트 생성
+        std::string salt = generate_salt();
 
-            rc = sqlite3_step(stmt);
-            if (rc == SQLITE_DONE)
+        // 비밀번호 해시
+        std::string hashed_password = hash_password(password, salt);
+
+        try
+        {
+            bool signup_success = withConnection([&](sql::Connection& con) {
+                std::unique_ptr<sql::PreparedStatement> pstmt(con.prepareStatement(
+                    "INSERT INTO USERS (USERNAME, PASSWORD, SALT) VALUES (?, ?, ?)"));
+                pstmt->setString(1, username);
+                pstmt->setString(2, hashed_password);
+                pstmt->setString(3, salt);
+
+                int affected_rows = pstmt->executeUpdate();
+                return affected_rows > 0;
+            });
+
+            if (signup_success)
             {
                 std::string response_body = "Signup successful";
                 std::string response = "HTTP/1.1 200 OK\r\n"
                                        "Content-Type: text/plain\r\n"
                                        "Content-Length: " +
                                        std::to_string(response_body.size()) + "\r\n"
-                                                                              "Connection: close\r\n\r\n" +
+                                       "Connection: close\r\n\r\n" +
                                        response_body;
                 SSL_write(ssl, response.c_str(), response.length());
             }
@@ -886,23 +640,22 @@ void handle_signup(SSL *ssl, const std::string &body)
                                        "Content-Type: text/plain\r\n"
                                        "Content-Length: " +
                                        std::to_string(response_body.size()) + "\r\n"
-                                                                              "Connection: close\r\n\r\n" +
+                                       "Connection: close\r\n\r\n" +
                                        response_body;
                 SSL_write(ssl, response.c_str(), response.length());
             }
         }
-        else
+        catch (const sql::SQLException &e)
         {
-            std::string response_body = "Signup failed (DB error)";
+            std::string response_body = "Signup failed (DB error: " + std::string(e.what()) + ")";
             std::string response = "HTTP/1.1 500 Internal Server Error\r\n"
                                    "Content-Type: text/plain\r\n"
                                    "Content-Length: " +
                                    std::to_string(response_body.size()) + "\r\n"
-                                                                          "Connection: close\r\n\r\n" +
+                                   "Connection: close\r\n\r\n" +
                                    response_body;
             SSL_write(ssl, response.c_str(), response.length());
         }
-        sqlite3_finalize(stmt);
     }
     else
     {
@@ -911,41 +664,48 @@ void handle_signup(SSL *ssl, const std::string &body)
                                "Content-Type: text/plain\r\n"
                                "Content-Length: " +
                                std::to_string(response_body.size()) + "\r\n"
-                                                                      "Connection: close\r\n\r\n" +
+                               "Connection: close\r\n\r\n" +
                                response_body;
         SSL_write(ssl, response.c_str(), response.length());
     }
-    connectionPool.releaseConnection(db);
 }
-
-// 사용자 정보를 데이터베이스에서 확인하는 함수
 bool verify_user(const std::string &username, const std::string &password)
 {
-    sqlite3 *db = connectionPool.getConnection();
-    const char *sql_select = "SELECT PASSWORD, SALT FROM USERS WHERE USERNAME = ?;";
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db, sql_select, -1, &stmt, 0);
-    if (rc != SQLITE_OK)
+    sql::Connection *con = get_connection();
+    if (!con)
+        return false;
+
+    try
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        sql::PreparedStatement *pstmt = con->prepareStatement(
+            "SELECT PASSWORD, SALT FROM USERS WHERE USERNAME = ?");
+        pstmt->setString(1, username);
+        sql::ResultSet *res = pstmt->executeQuery();
+
+        if (res->next())
+        {
+            std::string stored_password = res->getString("PASSWORD");
+            std::string salt = res->getString("SALT");
+            delete res;
+            delete pstmt;
+            delete con;
+
+            std::string hashed_input = hash_password(password, salt);
+            return stored_password == hashed_input;
+        }
+
+        delete res;
+        delete pstmt;
+        delete con;
         return false;
     }
-    sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
-    rc = sqlite3_step(stmt);
-    if (rc == SQLITE_ROW)
+    catch (sql::SQLException &e)
     {
-        std::string stored_password = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
-        std::string salt = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-        sqlite3_finalize(stmt);
-
-        std::string hashed_input = hash_password(password, salt);
-        return stored_password == hashed_input;
+        std::cerr << "SQL Exception: " << e.what() << std::endl;
+        delete con;
+        return false;
     }
-    sqlite3_finalize(stmt);
-    connectionPool.releaseConnection(db);
-    return false;
-}
-// bool verify_user(const std::string &username, const std::string &password)
+} // bool verify_user(const std::string &username, const std::string &password)
 // {
 //     const char *sql_select = "SELECT PASSWORD FROM USERS WHERE USERNAME = ?;";
 //     sqlite3_stmt *stmt;
@@ -1009,63 +769,52 @@ std::string create_jwt(const std::string &username, const std::string &secret_ke
 void handle_login(SSL *ssl, const std::string &body)
 {
     json response;
-    sqlite3 *db = nullptr;
-
     try
     {
         json request_data = json::parse(body);
-
         if (!request_data.contains("username") || !request_data.contains("password"))
         {
             throw std::runtime_error("Missing username or password");
         }
-
         std::string username = request_data["username"];
         std::string password = request_data["password"];
 
-        db = connectionPool.getConnection();
-        if (!db)
-        {
-            throw std::runtime_error("Failed to get database connection");
-        }
+        withConnection([&](sql::Connection& conn) {
+            std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement(
+                "SELECT PASSWORD, SALT FROM USERS WHERE USERNAME = ?"));
+            pstmt->setString(1, username);
+            std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
 
-        const char *sql_select = "SELECT PASSWORD, SALT FROM USERS WHERE USERNAME = ?;";
-        sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db, sql_select, -1, &stmt, 0);
-        if (rc != SQLITE_OK)
-        {
-            throw std::runtime_error(std::string("Failed to prepare statement: ") + sqlite3_errmsg(db));
-        }
-
-        sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
-        rc = sqlite3_step(stmt);
-
-        if (rc == SQLITE_ROW)
-        {
-            std::string stored_password = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
-            std::string salt = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-            sqlite3_finalize(stmt);
-
-            std::string hashed_input = hash_password(password, salt);
-            if (stored_password == hashed_input)
+            if (res->next())
             {
-                std::string token = create_jwt(username, SECRET_KEY);
-                response["success"] = true;
-                response["token"] = token;
-                response["username"] = username;
+                std::string stored_password = res->getString("PASSWORD");
+                std::string salt = res->getString("SALT");
+
+                std::string hashed_input = hash_password(password, salt);
+                if (stored_password == hashed_input)
+                {
+                    std::string token = create_jwt(username, SECRET_KEY);
+                    response["success"] = true;
+                    response["token"] = token;
+                    response["username"] = username;
+                }
+                else
+                {
+                    response["success"] = false;
+                    response["message"] = "Invalid credentials";
+                }
             }
             else
             {
                 response["success"] = false;
                 response["message"] = "Invalid credentials";
             }
-        }
-        else
-        {
-            sqlite3_finalize(stmt);
-            response["success"] = false;
-            response["message"] = "Invalid credentials";
-        }
+        });
+    }
+    catch (const sql::SQLException &e)
+    {
+        response["success"] = false;
+        response["message"] = "Database error: " + std::string(e.what());
     }
     catch (const std::exception &e)
     {
@@ -1073,12 +822,7 @@ void handle_login(SSL *ssl, const std::string &body)
         response["message"] = e.what();
     }
 
-    // 항상 연결을 해제합니다.
-    if (db)
-    {
-        connectionPool.releaseConnection(db);
-    }
-
+    // Send the response
     std::string response_body = response.dump();
     std::ostringstream response_stream;
     response_stream << "HTTP/1.1 200 OK\r\n"
@@ -1094,52 +838,31 @@ void handle_login(SSL *ssl, const std::string &body)
 }
 bool is_username_taken(const std::string &username)
 {
-    sqlite3 *db = nullptr;
-    bool is_taken = false;
-
-    try
-    {
-        db = connectionPool.getConnection();
-        if (!db)
+    return withConnection([&username](sql::Connection& conn) {
+        bool is_taken = false;
+        try
         {
-            throw std::runtime_error("Failed to get database connection");
+            std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement(
+                "SELECT COUNT(*) FROM USERS WHERE USERNAME = ?"));
+            pstmt->setString(1, username);
+
+            std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+
+            if (res->next())
+            {
+                int count = res->getInt(1);
+                is_taken = (count > 0);
+            }
+        }
+        catch (const sql::SQLException &e)
+        {
+            std::cerr << "SQL Exception in is_username_taken: " << e.what() << std::endl;
+            // 에러 발생 시 예외를 던져서 상위에서 처리하도록 합니다.
+            throw;
         }
 
-        const char *sql_select = "SELECT COUNT(*) FROM USERS WHERE USERNAME = ?;";
-        sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db, sql_select, -1, &stmt, 0);
-        if (rc != SQLITE_OK)
-        {
-            throw std::runtime_error(std::string("Failed to prepare statement: ") + sqlite3_errmsg(db));
-        }
-
-        sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_STATIC);
-
-        rc = sqlite3_step(stmt);
-        if (rc == SQLITE_ROW)
-        {
-            int count = sqlite3_column_int(stmt, 0);
-            is_taken = (count > 0);
-        }
-        else
-        {
-            throw std::runtime_error(std::string("Failed to execute statement: ") + sqlite3_errmsg(db));
-        }
-
-        sqlite3_finalize(stmt);
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "Error in is_username_taken: " << e.what() << std::endl;
-        is_taken = false; // 에러 발생 시 기본적으로 false 반환
-    }
-
-    if (db)
-    {
-        connectionPool.releaseConnection(db);
-    }
-
-    return is_taken;
+        return is_taken;
+    });
 }
 // 아이디 중복 확인 요청을 처리하는 함수
 void handle_check_username(SSL *ssl, const std::string &body)
@@ -1149,27 +872,26 @@ void handle_check_username(SSL *ssl, const std::string &body)
     {
         std::string username = params["username"];
 
-        if (is_username_taken(username))
+        try 
         {
-            std::string response_body = "Username is taken";
+            bool is_taken = is_username_taken(username);
+
+            std::string response_body = is_taken ? "Username is taken" : "Username is available";
             std::string response = "HTTP/1.1 200 OK\r\n"
                                    "Content-Type: text/plain\r\n"
-                                   "Content-Length: " +
-                                   std::to_string(response_body.size()) + "\r\n"
-                                                                          "Connection: close\r\n\r\n" +
-                                   response_body;
+                                   "Content-Length: " + std::to_string(response_body.size()) + "\r\n"
+                                   "Connection: close\r\n\r\n" + response_body;
             SSL_write(ssl, response.c_str(), response.length());
         }
-        else
+        catch (const std::exception &e)
         {
-            std::string response_body = "Username is available";
-            std::string response = "HTTP/1.1 200 OK\r\n"
-                                   "Content-Type: text/plain\r\n"
-                                   "Content-Length: " +
-                                   std::to_string(response_body.size()) + "\r\n"
-                                                                          "Connection: close\r\n\r\n" +
-                                   response_body;
-            SSL_write(ssl, response.c_str(), response.length());
+            std::cerr << "Error in handle_check_username: " << e.what() << std::endl;
+            std::string error_response = "HTTP/1.1 500 Internal Server Error\r\n"
+                                         "Content-Type: text/plain\r\n"
+                                         "Content-Length: 21\r\n"
+                                         "Connection: close\r\n\r\n"
+                                         "Internal Server Error";
+            SSL_write(ssl, error_response.c_str(), error_response.length());
         }
     }
     else
@@ -1177,15 +899,11 @@ void handle_check_username(SSL *ssl, const std::string &body)
         std::string response_body = "Bad Request";
         std::string response = "HTTP/1.1 400 Bad Request\r\n"
                                "Content-Type: text/plain\r\n"
-                               "Content-Length: " +
-                               std::to_string(response_body.size()) + "\r\n"
-                                                                      "Connection: close\r\n\r\n" +
-                               response_body;
+                               "Content-Length: " + std::to_string(response_body.size()) + "\r\n"
+                               "Connection: close\r\n\r\n" + response_body;
         SSL_write(ssl, response.c_str(), response.length());
     }
-    // close(client_socket);
-}
-// 사용자 수를 데이터베이스에서 가져오는 함수
+}// 사용자 수를 데이터베이스에서 가져오는 함수
 void send_json_response2(SSL *ssl, int status_code, const std::string &status_message, const json &response_json)
 {
     std::string json_str = response_json.dump();
@@ -1216,63 +934,27 @@ void send_json_response(SSL *ssl, int status_code, const std::string &status_mes
         std::cerr << "Failed to send full response. Sent " << bytes_sent << " out of " << response_str.length() << " bytes." << std::endl;
     }
 }
-// 사용자 수를 가져오는 함수
-std::pair<int, std::string> get_user_count()
-{
-    sqlite3 *db = connectionPool.getConnection();
-    const char *sql_count = "SELECT COUNT(*) FROM USERS;";
-    sqlite3_stmt *stmt;
-    int user_count = 0;
-    std::string error_message;
-
-    int rc = sqlite3_prepare_v2(db, sql_count, -1, &stmt, nullptr);
-    if (rc == SQLITE_OK)
-    {
-        rc = sqlite3_step(stmt);
-        if (rc == SQLITE_ROW)
-        {
-            user_count = sqlite3_column_int(stmt, 0);
-        }
-        else
-        {
-            error_message = "Failed to fetch user count: " + std::string(sqlite3_errmsg(db));
-        }
-        sqlite3_finalize(stmt);
-    }
-    else
-    {
-        error_message = "Failed to prepare statement: " + std::string(sqlite3_errmsg(db));
-    }
-    connectionPool.releaseConnection(db);
-    return {user_count, error_message};
-}
-// 사용자 수 요청을 처리하는 함수
-void handle_user_count_request(SSL *ssl)
-{
+void handle_user_count_request(SSL *ssl) {
     json response_json;
     int status_code = 200;
     std::string status_message = "OK";
 
-    auto [user_count, error_message] = get_user_count();
+    try {
+        int user_count = withConnection([](sql::Connection& conn) {
+            std::unique_ptr<sql::Statement> stmt(conn.createStatement());
+            std::unique_ptr<sql::ResultSet> res(stmt->executeQuery("SELECT COUNT(*) FROM USERS"));
+            res->next();
+            return res->getInt(1);
+        });
 
-    // 디버깅: 데이터베이스 쿼리 결과 출력
-    std::cout << "User count: " << user_count << ", Error message: " << error_message << std::endl;
-
-    if (error_message.empty())
-    {
         response_json["success"] = true;
         response_json["user_count"] = user_count;
-    }
-    else
-    {
+    } catch (const std::exception& e) {
         status_code = 500;
         status_message = "Internal Server Error";
         response_json["success"] = false;
-        response_json["error"] = error_message;
+        response_json["error"] = e.what();
     }
-
-    // 디버깅: 생성된 JSON 출력
-    std::cout << "Generated JSON: " << response_json.dump() << std::endl;
 
     send_json_response2(ssl, status_code, status_message, response_json);
 }
@@ -1551,6 +1233,8 @@ std::string get_content_type(const std::string &file_extension)
         return "image/gif";
     if (file_extension == ".pdf")
         return "application/pdf";
+    if (file_extension == ".3ds")
+        return "application/x-3ds";
     // Add more file types as needed
     return "application/octet-stream"; // Default type for unknown extensions
 }
@@ -1875,59 +1559,43 @@ std::string escape_json_string(const std::string &input)
 }
 void save_post(SSL *ssl, const std::string &body)
 {
-    json postData;
+    json postData = json::parse(body);
+    std::string response;
+
     try
     {
-        postData = json::parse(body);
+        bool success = withConnection([&](sql::Connection& conn) {
+            std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement(
+                "INSERT INTO posts (title, content, author, timestamp, category) VALUES (?, ?, ?, ?, ?)"));
+
+            pstmt->setString(1, postData["title"].get<std::string>());
+            pstmt->setString(2, postData["content"].get<std::string>());
+            pstmt->setString(3, postData["author"].get<std::string>());
+            pstmt->setString(4, postData["timestamp"].get<std::string>());
+            pstmt->setString(5, postData["category"].get<std::string>());
+
+            return pstmt->executeUpdate() > 0;
+        });
+
+        if (success) {
+            response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
+        } else {
+            response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to insert post\"}";
+        }
     }
-    catch (json::parse_error &e)
+    catch (const sql::SQLException &e)
     {
-        std::cerr << "JSON parse error: " << e.what() << std::endl;
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Invalid JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
+        std::cerr << "SQL Exception: " << e.what() << std::endl;
+        response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Database error\"}";
     }
-
-    std::string title = postData["title"];
-    std::string content = postData["content"];
-    std::string author = postData["author"];
-    std::string timestamp = postData["timestamp"];
-    std::string category = postData["category"]; // 카테고리 추가
-
-    sqlite3_stmt *stmt;
-    std::string sql = "INSERT INTO posts (title, content, author, timestamp, category) VALUES (?, ?, ?, ?, ?);";
-
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
+    catch (const std::exception &e)
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Database error\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
+        std::cerr << "Exception: " << e.what() << std::endl;
+        response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Unknown error\"}";
     }
 
-    sqlite3_bind_text(stmt, 1, title.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, content.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 3, author.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 5, category.c_str(), -1, SQLITE_STATIC); // 카테고리 바인딩
-
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE)
-    {
-        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Database error\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        sqlite3_finalize(stmt);
-        return;
-    }
-
-    sqlite3_finalize(stmt);
-
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
     SSL_write(ssl, response.c_str(), response.length());
 }
-
 // Function to replace all occurrences of a substring with another substring in a string
 void replace_all(std::string &str, const std::string &from, const std::string &to)
 {
@@ -1942,38 +1610,48 @@ void handle_get_posts(SSL *ssl, const std::string &query)
 {
     std::unordered_map<std::string, std::string> params = parse_query_params(query);
     std::string category = params["category"];
+    std::string sortColumn = params["sortColumn"];
+    std::string sortOrder = params["sortOrder"];
 
-    std::string sql = "SELECT id, title, content, author, timestamp FROM posts WHERE category = ?;";
-    sqlite3_stmt *stmt;
-
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
+    try
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+        Json::Value posts = withConnection([&](sql::Connection& conn) {
+            std::string sql = "SELECT id, title, content, author, timestamp FROM posts WHERE category = ?";
+            
+            if (!sortColumn.empty() && !sortOrder.empty()) {
+                sql += " ORDER BY " + sortColumn + " " + sortOrder;
+            }
+
+            std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement(sql));
+            pstmt->setString(1, category);
+            std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+
+            Json::Value posts(Json::arrayValue);
+            while (res->next())
+            {
+                Json::Value post;
+                post["id"] = Json::Int64(res->getInt64("id"));
+                post["title"] = res->getString("title").c_str();
+                post["content"] = res->getString("content").c_str();
+                post["author"] = res->getString("author").c_str();
+                post["timestamp"] = res->getString("timestamp").c_str();
+                posts.append(post);
+            }
+            return posts;
+        });
+
+        Json::StreamWriterBuilder writer;
+        std::string json_response = Json::writeString(writer, posts);
+        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
         SSL_write(ssl, response.c_str(), response.length());
-        return;
     }
-
-    sqlite3_bind_text(stmt, 1, category.c_str(), -1, SQLITE_STATIC);
-
-    Json::Value posts(Json::arrayValue);
-    while (sqlite3_step(stmt) == SQLITE_ROW)
+    catch (const std::exception &e)
     {
-        Json::Value post;
-        post["id"] = sqlite3_column_int(stmt, 0);
-        post["title"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-        post["content"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
-        post["author"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
-        post["timestamp"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 4));
-        posts.append(post);
+        std::string error_message = std::string("Error fetching posts: ") + e.what();
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n"
+                               "{\"success\": false, \"error\": \"" + error_message + "\"}";
+        SSL_write(ssl, response.c_str(), response.length());
     }
-    sqlite3_finalize(stmt);
-
-    Json::StreamWriterBuilder writer;
-    std::string json_response = Json::writeString(writer, posts);
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
-    SSL_write(ssl, response.c_str(), response.length());
 }
 std::vector<std::string> getImagesList(const std::string &directory)
 {
@@ -2007,88 +1685,42 @@ void handle_get_images(SSL *ssl)
     response += response_body;
 
     SSL_write(ssl, response.c_str(), response.length());
-    // close(client_socket);
 }
 void handle_delete_post(SSL *ssl, const std::string &request_body)
 {
-    Json::Value postData;
-    Json::CharReaderBuilder reader;
-    std::string errs;
-    std::istringstream s(request_body);
-    if (!Json::parseFromStream(reader, s, &postData, &errs))
-    {
-        std::cerr << "Failed to parse JSON: " << errs << std::endl;
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
+    json postData = json::parse(request_body);
+    int post_id = postData["id"].get<int>();
+    std::string username = postData["username"];
 
-    int post_id = postData["id"].asInt();
-    std::string username = postData["username"].asString();
+    withConnection([&](sql::Connection& con) {
+        std::unique_ptr<sql::PreparedStatement> pstmt(con.prepareStatement("SELECT author FROM posts WHERE id = ?"));
+        pstmt->setInt(1, post_id);
+        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
 
-    sqlite3_stmt *stmt;
-    std::string sql = "SELECT author FROM posts WHERE id = ?;";
+        if (res->next())
+        {
+            std::string author = res->getString("author");
 
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
-    {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
+            if (author != username)
+            {
+                std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+                SSL_write(ssl, response.c_str(), response.length());
+                return;
+            }
 
-    sqlite3_bind_int(stmt, 1, post_id);
+            pstmt.reset(con.prepareStatement("DELETE FROM posts WHERE id = ?"));
+            pstmt->setInt(1, post_id);
+            pstmt->executeUpdate();
 
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_ROW)
-    {
-        std::cerr << "Post not found: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
-        sqlite3_finalize(stmt);
-        return;
-    }
-
-    std::string author = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
-    author = urlDecode(author);
-    sqlite3_finalize(stmt);
-
-    if (author != username)
-    {
-        std::cerr << "Unauthorized delete attempt by user: " << username << std::endl;
-        std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
-
-    sql = "DELETE FROM posts WHERE id = ?;";
-    rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
-    {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
-
-    sqlite3_bind_int(stmt, 1, post_id);
-
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE)
-    {
-        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
-        SSL_write(ssl, response.c_str(), response.length());
-        sqlite3_finalize(stmt);
-        return;
-    }
-
-    sqlite3_finalize(stmt);
-
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
-    SSL_write(ssl, response.c_str(), response.length());
-    // close(client_socket);
+            std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
+            SSL_write(ssl, response.c_str(), response.length());
+        }
+        else
+        {
+            std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+            SSL_write(ssl, response.c_str(), response.length());
+        }
+    });
 }
 std::string parseMultipartData(const std::string &data, std::string &filename)
 {
@@ -2189,279 +1821,227 @@ void handleUploadFiles(SSL *ssl, const std::string &request_body)
 }
 void handle_get_comments(SSL *ssl, const std::string &query)
 {
-    // Extract postId from query string
-    std::string postIdStr;
-    size_t pos = query.find("postId=");
-    if (pos != std::string::npos)
-    {
-        postIdStr = query.substr(pos + 7);
-    }
+    std::unordered_map<std::string, std::string> params = parse_query_params(query);
+    int postId = std::stoi(params["postId"]);
 
-    int postId;
     try
     {
-        postId = std::stoi(postIdStr);
-    }
-    catch (const std::invalid_argument &e)
-    {
-        std::cerr << "Invalid postId: " << postIdStr << std::endl;
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Invalid postId\"}";
+        Json::Value jsonResponse = withConnection([postId](sql::Connection& conn) {
+            std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement(
+                "SELECT id, author, content, timestamp FROM comments WHERE post_id = ?"));
+            pstmt->setInt(1, postId);
+            std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+
+            Json::Value comments(Json::arrayValue);
+
+            while (res->next())
+            {
+                Json::Value comment;
+                comment["id"] = Json::Int64(res->getInt64("id"));
+                comment["author"] = res->getString("author").c_str();
+                comment["text"] = res->getString("content").c_str();
+                comment["timestamp"] = res->getString("timestamp").c_str();
+                comments.append(comment);
+            }
+
+            Json::Value response;
+            response["comments"] = comments;
+            return response;
+        });
+
+        Json::StreamWriterBuilder writer;
+        std::string json_response = Json::writeString(writer, jsonResponse);
+
+        std::string response = "HTTP/1.1 200 OK\r\n"
+                               "Content-Type: application/json\r\n"
+                               "Content-Length: " + std::to_string(json_response.length()) + "\r\n"
+                               "\r\n" + json_response;
         SSL_write(ssl, response.c_str(), response.length());
-        return;
     }
-
-    std::string sql = "SELECT id, author, content, timestamp FROM comments WHERE post_id = ?;";
-    sqlite3_stmt *stmt;
-
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0) != SQLITE_OK)
+    catch (const std::exception& e)
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
+        std::string error_message = "Failed to fetch comments: " + std::string(e.what());
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\n"
+                               "Content-Type: application/json\r\n"
+                               "Content-Length: " + std::to_string(error_message.length() + 23) + "\r\n"
+                               "\r\n{\"success\": false, \"error\": \"" + error_message + "\"}";
         SSL_write(ssl, response.c_str(), response.length());
-        return;
     }
-
-    sqlite3_bind_int(stmt, 1, postId);
-
-    Json::Value comments(Json::arrayValue);
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
-        Json::Value comment;
-        comment["id"] = sqlite3_column_int(stmt, 0);
-        comment["author"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-        comment["text"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
-        comment["timestamp"] = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
-        comments.append(comment);
-    }
-
-    sqlite3_finalize(stmt);
-
-    Json::Value jsonResponse;
-    jsonResponse["comments"] = comments;
-    Json::StreamWriterBuilder writer;
-    std::string json_response = Json::writeString(writer, jsonResponse);
-
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
-    SSL_write(ssl, response.c_str(), response.length());
 }
 void handle_edit_comment(SSL *ssl, const std::string &request_body)
 {
-    Json::Value jsonData;
-    Json::CharReaderBuilder readerBuilder;
-    std::string errs;
-    std::istringstream iss(request_body);
-
-    if (!Json::parseFromStream(readerBuilder, iss, &jsonData, &errs))
+    try
     {
-        std::cerr << "Failed to parse JSON: " << errs << std::endl;
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
-    std::string IdStr = jsonData["id"].asString();
-    int commentId = std::stoi(IdStr);
-    std::string newText = jsonData["newText"].asString();
+        json jsonData = json::parse(request_body);
+        int commentId = jsonData["id"].get<int>();
+        std::string newText = jsonData["newText"];
 
-    // First, get the postId of the comment to be edited
-    std::string getPostIdSql = "SELECT post_id FROM comments WHERE id = ?;";
-    sqlite3_stmt *getPostIdStmt;
-    if (sqlite3_prepare_v2(db, getPostIdSql.c_str(), -1, &getPostIdStmt, 0) != SQLITE_OK)
+        bool success = withConnection([&](sql::Connection& conn) {
+            std::unique_ptr<sql::PreparedStatement> updateStmt(conn.prepareStatement(
+                "UPDATE comments SET content = ?, timestamp = NOW() WHERE id = ?"));
+            updateStmt->setString(1, newText);
+            updateStmt->setInt(2, commentId);
+            int affectedRows = updateStmt->executeUpdate();
+
+            if (affectedRows == 0) {
+                return false; // Comment not found or not updated
+            }
+
+            std::unique_ptr<sql::PreparedStatement> selectStmt(conn.prepareStatement(
+                "SELECT post_id FROM comments WHERE id = ?"));
+            selectStmt->setInt(1, commentId);
+            std::unique_ptr<sql::ResultSet> res(selectStmt->executeQuery());
+
+            if (res->next()) {
+                int postId = res->getInt("post_id");
+                json responseJson;
+                responseJson["success"] = true;
+                responseJson["postId"] = postId;
+                send_json_response2(ssl, 200, "OK", responseJson);
+                return true;
+            }
+            return false;
+        });
+
+        if (!success) {
+            json responseJson;
+            responseJson["success"] = false;
+            responseJson["error"] = "Comment not found or not updated";
+            send_json_response2(ssl, 404, "Not Found", responseJson);
+        }
+    }
+    catch (const sql::SQLException &e)
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
+        json responseJson;
+        responseJson["success"] = false;
+        responseJson["error"] = "Database error: " + std::string(e.what());
+        send_json_response2(ssl, 500, "Internal Server Error", responseJson);
     }
-
-    sqlite3_bind_int(getPostIdStmt, 1, commentId);
-    int postId = -1;
-    if (sqlite3_step(getPostIdStmt) == SQLITE_ROW)
+    catch (const json::exception &e)
     {
-        postId = sqlite3_column_int(getPostIdStmt, 0);
+        json responseJson;
+        responseJson["success"] = false;
+        responseJson["error"] = "JSON parsing error: " + std::string(e.what());
+        send_json_response2(ssl, 400, "Bad Request", responseJson);
     }
-    sqlite3_finalize(getPostIdStmt);
-
-    if (postId == -1)
+    catch (const std::exception &e)
     {
-        std::cerr << "Failed to find postId for comment: " << commentId << std::endl;
-        std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Comment not found\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
+        json responseJson;
+        responseJson["success"] = false;
+        responseJson["error"] = "Unexpected error: " + std::string(e.what());
+        send_json_response2(ssl, 500, "Internal Server Error", responseJson);
     }
-
-    // Get current timestamp
-    std::string timestamp = get_current_timestamp();
-
-    // Update the comment content and timestamp
-    std::string sql = "UPDATE comments SET content = ?, timestamp = ? WHERE id = ?;";
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0) != SQLITE_OK)
-    {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
-
-    sqlite3_bind_text(stmt, 1, newText.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, timestamp.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 3, commentId);
-
-    if (sqlite3_step(stmt) != SQLITE_DONE)
-    {
-        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-    }
-    else
-    {
-        Json::Value responseJson;
-        responseJson["success"] = true;
-        responseJson["postId"] = postId;
-
-        Json::StreamWriterBuilder writer;
-        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + Json::writeString(writer, responseJson);
-        SSL_write(ssl, response.c_str(), response.length());
-    }
-
-    sqlite3_finalize(stmt);
-    // close(client_socket);
 }
 void handle_delete_comment(SSL *ssl, const std::string &request_body)
 {
-    Json::Value jsonData;
-    Json::CharReaderBuilder readerBuilder;
-    std::string errs;
-    std::istringstream iss(request_body);
+    json jsonData = json::parse(request_body);
+    int commentId = jsonData["id"].get<int>();
 
-    if (!Json::parseFromStream(readerBuilder, iss, &jsonData, &errs))
+    try
     {
-        std::cerr << "Failed to parse JSON: " << errs << std::endl;
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
+        auto result = withConnection([commentId](sql::Connection& conn) {
+            int postId = -1;
+            bool commentFound = false;
+            int affectedRows = 0;
+
+            {
+                std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement(
+                    "SELECT post_id FROM comments WHERE id = ?"));
+                pstmt->setInt(1, commentId);
+                std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+
+                if (res->next())
+                {
+                    postId = res->getInt("post_id");
+                    commentFound = true;
+                }
+            }
+
+            if (commentFound)
+            {
+                std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement("DELETE FROM comments WHERE id = ?"));
+                pstmt->setInt(1, commentId);
+                affectedRows = pstmt->executeUpdate();
+            }
+
+            return std::make_tuple(commentFound, affectedRows, postId);
+        });
+
+        auto [commentFound, affectedRows, postId] = result;
+
+        if (commentFound && affectedRows > 0)
+        {
+            Json::Value responseJson;
+            responseJson["success"] = true;
+            responseJson["postId"] = postId;
+
+            Json::StreamWriterBuilder writer;
+            std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + Json::writeString(writer, responseJson);
+            SSL_write(ssl, response.c_str(), response.length());
+        }
+        else
+        {
+            std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Comment not found\"}";
+            SSL_write(ssl, response.c_str(), response.length());
+        }
     }
-    std::string commentIdStr = jsonData["id"].asString();
-    int commentId = std::stoi(commentIdStr);
-
-    // First, get the postId of the comment to be edited
-    std::string getPostIdSql = "SELECT post_id FROM comments WHERE id = ?;";
-    sqlite3_stmt *getPostIdStmt;
-    if (sqlite3_prepare_v2(db, getPostIdSql.c_str(), -1, &getPostIdStmt, 0) != SQLITE_OK)
+    catch (const sql::SQLException &e)
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
-
-    sqlite3_bind_int(getPostIdStmt, 1, commentId);
-    int postId = -1;
-    if (sqlite3_step(getPostIdStmt) == SQLITE_ROW)
-    {
-        postId = sqlite3_column_int(getPostIdStmt, 0);
-    }
-    sqlite3_finalize(getPostIdStmt);
-
-    if (postId == -1)
-    {
-        std::cerr << "Failed to find postId for comment: " << commentId << std::endl;
-        std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Comment not found\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
-
-    std::string sql = "DELETE FROM comments WHERE id = ?;";
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0) != SQLITE_OK)
-    {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to prepare statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
-
-    sqlite3_bind_int(stmt, 1, commentId);
-
-    if (sqlite3_step(stmt) != SQLITE_DONE)
-    {
-        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
+        std::string errorMsg = "Failed to delete comment: " + std::string(e.what());
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n"
+                               "{\"success\": false, \"error\": \"" + errorMsg + "\"}";
         SSL_write(ssl, response.c_str(), response.length());
     }
-    else
+    catch (const std::exception &e)
     {
-        Json::Value responseJson;
-        responseJson["success"] = true;
-        responseJson["postId"] = postId;
-
-        Json::StreamWriterBuilder writer;
-        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + Json::writeString(writer, responseJson);
+        std::string errorMsg = "An error occurred: " + std::string(e.what());
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n"
+                               "{\"success\": false, \"error\": \"" + errorMsg + "\"}";
         SSL_write(ssl, response.c_str(), response.length());
     }
-
-    sqlite3_finalize(stmt);
-    // close(client_socket);
 }
 void handle_add_comment(SSL *ssl, const std::string &request_body)
 {
-    Json::Value jsonData;
-    Json::CharReaderBuilder readerBuilder;
-    std::string errs;
-    std::istringstream iss(request_body);
+    json jsonData = json::parse(request_body);
+    int postId = std::stoi(jsonData["postId"].get<std::string>());
+    std::string commentText = jsonData["commentText"];
+    std::string author = jsonData["author"];
 
-    if (!Json::parseFromStream(readerBuilder, iss, &jsonData, &errs))
+    try
     {
-        std::cerr << "Failed to parse JSON: " << errs << std::endl;
-        // send error response
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to parse JSON\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
+        bool success = withConnection([&](sql::Connection& conn) {
+            std::unique_ptr<sql::PreparedStatement> pstmt(conn.prepareStatement(
+                "INSERT INTO comments (post_id, author, content, timestamp) VALUES (?, ?, ?, NOW())"));
+
+            pstmt->setInt(1, postId);
+            pstmt->setString(2, author);
+            pstmt->setString(3, commentText);
+            int affectedRows = pstmt->executeUpdate();
+
+            return affectedRows > 0;
+        });
+
+        if (success)
+        {
+            json response_json = {{"success", true}};
+            send_json_response2(ssl, 200, "OK", response_json);
+        }
+        else
+        {
+            json response_json = {{"success", false}, {"error", "Failed to add comment"}};
+            send_json_response2(ssl, 500, "Internal Server Error", response_json);
+        }
     }
-
-    std::string postIdStr = jsonData["postId"].asString();
-    int postId;
-    std::istringstream(postIdStr) >> postId;
-
-    if (postId == 0 && postIdStr != "0")
+    catch (const sql::SQLException &e)
     {
-        std::cerr << "postId is not a valid integer" << std::endl;
-        // send error response
-        std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"postId must be an integer\"}";
-        SSL_write(ssl, response.c_str(), response.length());
-        return;
+        json response_json = {{"success", false}, {"error", "Failed to add comment: " + std::string(e.what())}};
+        send_json_response2(ssl, 500, "Internal Server Error", response_json);
     }
-
-    std::string commentText = jsonData["commentText"].asString();
-    std::string author = jsonData["author"].asString(); // Read author from JSON data
-
-    std::string sql = "INSERT INTO comments (post_id, author, content, timestamp) VALUES (?, ?, ?, ?);";
-    sqlite3_stmt *stmt;
-    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    sqlite3_bind_int(stmt, 1, postId);
-    sqlite3_bind_text(stmt, 2, author.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 3, commentText.c_str(), -1, SQLITE_STATIC);
-
-    // Get current timestamp
-    std::string timestamp = get_current_timestamp();
-    sqlite3_bind_text(stmt, 4, timestamp.c_str(), -1, SQLITE_STATIC);
-
-    if (sqlite3_step(stmt) != SQLITE_DONE)
+    catch (const std::exception &e)
     {
-        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
-        // send error response
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false, \"error\": \"Failed to execute statement\"}";
-        SSL_write(ssl, response.c_str(), response.length());
+        json response_json = {{"success", false}, {"error", "Unexpected error: " + std::string(e.what())}};
+        send_json_response2(ssl, 500, "Internal Server Error", response_json);
     }
-    else
-    {
-        // send success response
-        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\": true}";
-        SSL_write(ssl, response.c_str(), response.length());
-    }
-
-    sqlite3_finalize(stmt);
-    // close(client_socket);
 }
 std::string get_file_extension(const std::string &filename)
 {
@@ -2726,8 +2306,13 @@ void handle_delete_item(SSL *ssl, const std::string &request_body)
         }
 
         std::string path = request_data["path"];
+        // if (path == "/"){
+        //     path = "";
+        // } else {
+        //     path = path.substr(1);
+        // }
         std::string name = request_data["name"];
-        std::string root_path = UPLOAD_ROOT_DIR; // 실제 루트 경로로 변경해야 합니다
+        std::string root_path = UPLOAD_DIR; // 실제 루트 경로로 변경해야 합니다
         std::string full_path = root_path + path + name;
 
         // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
@@ -2778,10 +2363,15 @@ void handle_rename_item(SSL *ssl, const std::string &request_body)
         }
 
         std::string path = request_data["path"];
+        // if (path == "/"){
+        //     path = "";
+        // } else {
+        //     path = path.substr(1);
+        // }
         std::string old_name = request_data["oldName"];
         std::string new_name = request_data["newName"];
         std::string type = request_data["type"];
-        std::string root_path = UPLOAD_ROOT_DIR; // 실제 루트 경로로 변경해야 합니다
+        std::string root_path = UPLOAD_DIR; // 실제 루트 경로로 변경해야 합니다
         std::string old_full_path = root_path + path + old_name;
         std::string new_full_path = root_path + path + new_name;
 
@@ -2832,8 +2422,13 @@ void handle_create_folder(SSL *ssl, const std::string &request_body)
         }
 
         std::string path = request_data["path"];
+        // if (path == "/"){
+        //     path = "";
+        // } else {
+        //     path = path.substr(1);
+        // }
         std::string folder_name = request_data["name"];
-        std::string root_path = UPLOAD_ROOT_DIR; // 실제 루트 경로로 변경해야 합니다
+        std::string root_path = UPLOAD_DIR; // 실제 루트 경로로 변경해야 합니다
         std::string full_path = root_path + path + folder_name;
 
         // 보안 검사: path가 root_path 밖으로 나가지 않는지 확인
@@ -2922,29 +2517,58 @@ void handle_get_file_info(SSL *ssl, const std::string &query)
 }
 void handle_get_categories(SSL *ssl)
 {
-    std::string sql = "SELECT DISTINCT category FROM posts;";
-    sqlite3_stmt *stmt;
-
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
-    if (rc != SQLITE_OK)
+    try
     {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\": false}";
+        Json::Value categories = withConnection([](sql::Connection& conn) {
+            Json::Value cats(Json::arrayValue);
+            std::unique_ptr<sql::Statement> stmt(conn.createStatement());
+            std::unique_ptr<sql::ResultSet> res(stmt->executeQuery("SELECT DISTINCT category FROM posts"));
+
+            while (res->next())
+            {
+                std::string category = res->getString("category");
+                if (!category.empty())
+                {
+                    cats.append(category);
+                }
+            }
+            return cats;
+        });
+
+        Json::StreamWriterBuilder writer;
+        std::string json_response = Json::writeString(writer, categories);
+
+        std::string response = "HTTP/1.1 200 OK\r\n"
+                               "Content-Type: application/json\r\n"
+                               "Content-Length: " + std::to_string(json_response.length()) + "\r\n"
+                               "Connection: close\r\n\r\n" +
+                               json_response;
         SSL_write(ssl, response.c_str(), response.length());
-        return;
-    }
 
-    Json::Value categories(Json::arrayValue);
-    while (sqlite3_step(stmt) == SQLITE_ROW)
+        // 디버깅을 위한 출력
+        std::cout << "Categories found: " << categories.size() << std::endl;
+        std::cout << "JSON response: " << json_response << std::endl;
+    }
+    catch (const sql::SQLException& e)
     {
-        categories.append(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+        std::cerr << "SQL Exception: " << e.what() << std::endl;
+        std::string error_response = "HTTP/1.1 500 Internal Server Error\r\n"
+                                     "Content-Type: application/json\r\n"
+                                     "Content-Length: 30\r\n"
+                                     "Connection: close\r\n\r\n"
+                                     "{\"error\":\"Database Query Error\"}";
+        SSL_write(ssl, error_response.c_str(), error_response.length());
     }
-    sqlite3_finalize(stmt);
-
-    Json::StreamWriterBuilder writer;
-    std::string json_response = Json::writeString(writer, categories);
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json_response;
-    SSL_write(ssl, response.c_str(), response.length());
+    catch (const std::exception& e)
+    {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        std::string error_response = "HTTP/1.1 500 Internal Server Error\r\n"
+                                     "Content-Type: application/json\r\n"
+                                     "Content-Length: 30\r\n"
+                                     "Connection: close\r\n\r\n"
+                                     "{\"error\":\"Internal Server Error\"}";
+        SSL_write(ssl, error_response.c_str(), error_response.length());
+    }
 }
 std::unordered_map<std::string, std::function<void(SSL *ssl)>> get_routes = {
     {"/ws", [](SSL *ssl)
@@ -3427,7 +3051,6 @@ void start_server()
     EVP_cleanup();
     close(server_fd);
 }
-
 int main()
 {
     openlog("ssl_server", LOG_PID | LOG_CONS, LOG_USER);
@@ -3435,12 +3058,10 @@ int main()
     signal(SIGPIPE, SIG_IGN);
     // 데이터베이스 초기화
     init_database();
-    // 업로드 디렉토리 생성
-    mkdir(UPLOAD_DIR.c_str(), 0777);
 
     start_server();
 
-    sqlite3_close(db); // 서버 종료 시 데이터베이스 연결 닫기
+    // sqlite3_close(db); // 서버 종료 시 데이터베이스 연결 닫기
     closelog();
     return 0;
 }

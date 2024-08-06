@@ -5,6 +5,7 @@ import { OrbitControls } from './three/controls/OrbitControls.js';
 import { OBJLoader } from './three/loaders/OBJLoader.js';
 import { MTLLoader } from './three/loaders/MTLLoader.js';
 import { STLLoader } from './three/loaders/STLLoader.js';
+import { TDSLoader } from './three/loaders/TDSLoader.js';
 import { load3DModel } from './posts.js';
 
 export function render3DModel(canvas, modelData, mtlData, textureData, isUrl = false, modelType = 'obj') {
@@ -42,6 +43,8 @@ export function render3DModel(canvas, modelData, mtlData, textureData, isUrl = f
         loader = new OBJLoader();
     } else if (modelType === 'stl') {
         loader = new STLLoader();
+    } else if (modelType === '3ds') {
+        loader = new TDSLoader();
     } else {
         throw new Error('Unsupported model type: ' + modelType);
     }
@@ -111,6 +114,16 @@ export function render3DModel(canvas, modelData, mtlData, textureData, isUrl = f
             }
         });
     }
+    function base64ToArrayBuffer(base64) {
+        const binaryString = window.atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
     function loadModel(materials) {
         return new Promise((resolve, reject) => {
             const onLoad = (object) => {
@@ -162,6 +175,17 @@ export function render3DModel(canvas, modelData, mtlData, textureData, isUrl = f
 
                     object = new THREE.Group();
                     object.add(mesh);
+                } else if (modelType === '3ds') {
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0xcccccc,
+                        specular: 0x111111,
+                        shininess: 200
+                    });
+                    object.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            child.material = material;
+                        }
+                    });
                 }
                 resolve(object);
             };
@@ -173,26 +197,26 @@ export function render3DModel(canvas, modelData, mtlData, textureData, isUrl = f
                 loader.load(modelData, onLoad, onProgress,
                     (error) => reject(new Error(`Failed to load ${modelType.toUpperCase()}: ` + error.message)));
             } else {
-                if (modelType === 'stl') {
+                if (modelType === 'stl' || modelType === '3ds') {
                     // STL 파일의 경우, modelData가 이미 ArrayBuffer 형태라고 가정
                     try {
                         // base64 문자열을 ArrayBuffer로 변환
-                        if (typeof modelData === 'string') {
-                            const binary = atob(modelData);
-                            const len = binary.length;
-                            const bytes = new Uint8Array(len);
-                            for (let i = 0; i < len; i++) {
-                                bytes[i] = binary.charCodeAt(i);
-                            }
-                            modelData = bytes.buffer;
-                        }
+                        // if (typeof modelData === 'string') {
+                        //     const binary = atob(modelData);
+                        //     const len = binary.length;
+                        //     const bytes = new Uint8Array(len);
+                        //     for (let i = 0; i < len; i++) {
+                        //         bytes[i] = binary.charCodeAt(i);
+                        //     }
+                        //     modelData = bytes.buffer;
+                        // }
 
-                        // ArrayBuffer 확인
-                        if (!(modelData instanceof ArrayBuffer)) {
-                            throw new Error('STL data is not in ArrayBuffer format');
-                        }
-
-                        const geometry = loader.parse(modelData);
+                        // // ArrayBuffer 확인
+                        // if (!(modelData instanceof ArrayBuffer)) {
+                        //     throw new Error('STL data is not in ArrayBuffer format');
+                        // }
+                        const arrayBuffer = base64ToArrayBuffer(modelData);
+                        const geometry = loader.parse(arrayBuffer);
                         onLoad(geometry);
                     } catch (error) {
                         reject(new Error(`Failed to parse STL data: ${error.message}`));

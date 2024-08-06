@@ -15,6 +15,8 @@ export function initAuth(onLoginSuccess, onLogoutSuccess) {
                 localStorage.removeItem('token');
             });
     }
+    document.getElementById('fetchUserCountBtn').addEventListener('click', fetchUserCount);
+
 }
 
 export function showSignupForm() {
@@ -85,7 +87,7 @@ export function submitSignup() {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+        body: `username=${username}&password=${encodeURIComponent(password)}`
     })
         .then(response => response.text())
         .then(data => {
@@ -214,4 +216,20 @@ export function showWelcomeMessage(username) {
             document.getElementById('loginContainer').classList.remove('active');
             document.getElementById('signupContainer').classList.remove('active');
             document.getElementById('welcomeContainer').classList.add('active');
+}
+
+function fetchUserCount() {
+  fetch('/usercount')
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        document.getElementById('userCount').textContent = "전체 사용자 수: " + data.user_count;
+      } else {
+        document.getElementById('userCount').textContent = "사용자 수 조회 실패";
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      document.getElementById('userCount').textContent = "오류 발생";
+    });
 }
