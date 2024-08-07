@@ -2916,7 +2916,7 @@ void terminate_existing_server()
         pid_file >> pid;
         pid_file.close();
 
-        if (is_process_running(pid))
+        if (pid > 0 && is_process_running(pid))
         {
             std::cout << "Terminating existing server process (PID: " << pid << ")" << std::endl;
             kill(pid, SIGTERM);
