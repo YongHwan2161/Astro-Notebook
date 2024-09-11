@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOG IN</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <script defer src="../script/script.js"></script>
+    
+        <!-- kakao 로그인 기능 구현 -->
+        <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"
+        integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4"
+        crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <section id="login">
+        <div class="inside">
+            <div class="login-title">
+                <h2><a href="/index.html">ASTRO NOTATION</a></h4>
+                    <h5>로그인 방법을 선택해주세요</h5>
+            </div>
+            <div class="login-set">
+                <div class="login-part" id="kakao">
+                    <img src="/image/kakao_symbol.png" class="social-logo-img">
+                    <a href="javascript:void(0)" onclick="loginWithKakao();">
+                        카카오로 시작하기
+                    </a>
+                </div>
+                <div class="login-part" id="naver">
+                    <img src="/image/naver_symbol.svg" class="social-logo-img">
+                    <a href="#">네이버로 시작하기</a>
+                </div>
+                <div class="login-part" id="google">
+                    <img src="/image/google_symbol.png" class="social-logo-img">
+                    <a href="#">구글로 시작하기</a>
+                </div>
+                <div class="login-part" id="apple">
+                    <img src="/image/apple_symbol.svg" class="social-logo-img">
+                    <a href="#">Apple로 계속하기</a>
+                </div>
+            </div>
+            <div class="login-info">
+                <div class="login-info-link">
+                    <a href="#">이용약관</a>
+                    <a href="#">개인정보처리방침</a>
+                </div>
+                <div class="copyright">
+                    <p>Copyright (c)ASTRO NOTATION. All rights reserved</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        function kakaoLogin() {
+            console.log('call kakaoLogin');
+            Kakao.Auth.login({
+                success: function (authObj) {
+                    Kakao.API.request({
+                        url: '/v2/user/me',
+                        success: function (res) {
+                            const kakaoAccount = res.kakao_account;
+                            const data = {
+                                provider: 'kakao',
+                                id: res.id,
+                                email: kakaoAccount.email,
+                                name: kakaoAccount.profile.nickname
+                            };
+                            sendLoginDataToServer(data);
+                        },
+                        fail: function (error) {
+                            console.error('카카오 로그인 실패:', error);
+                        }
+                    });
+                },
+                fail: function (err) {
+                    console.error('카카오 로그인 실패:', err);
+                }
+            });
+        }
+
+        function sendLoginDataToServer(data) {
+            fetch('/social-login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        localStorage.setItem('token', result.token);
+                        window.location.href = '/'; // 로그인 성공 시 메인 페이지로 이동
+                    } else {
+                        console.error('서버 로그인 실패:', result.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('서버 통신 오류:', error);
+                });
+        }
+    </script>
+</body>

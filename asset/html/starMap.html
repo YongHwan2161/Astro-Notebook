@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Map</title>
+    <!-- Font Awesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="canvas"></canvas>
+
+
+    <!--
+  for most samples webgl-utils only provides shader compiling/linking and
+  canvas resizing because why clutter the examples with code that's the same in every sample.
+  See https://webglfundamentals.org/webgl/lessons/webgl-boilerplate.html
+  and https://webglfundamentals.org/webgl/lessons/webgl-resizing-the-canvas.html
+  for webgl-utils, m3, m4, and webgl-lessons-ui.
+  -->
+    <script src="https://webgl2fundamentals.org/webgl/resources/webgl-lessons-ui.js"></script>
+    <script src="https://webgl2fundamentals.org/webgl/resources/twgl-full.min.js"></script>
+    <script src="https://webgl2fundamentals.org/webgl/resources/m4.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gl-matrix@2.8.1/dist/gl-matrix-min.js"></script>
+    <script src="https://webgl2fundamentals.org/webgl/resources/flattened-primitives.js"></script>
+    <!-- stats.js -->
+    <script>
+        // stats.js - http://github.com/mrdoob/stats.js
+        (function (f, e) { "object" === typeof exports && "undefined" !== typeof module ? module.exports = e() : "function" === typeof define && define.amd ? define(e) : f.Stats = e() })(this, function () {
+            var f = function () {
+                function e(a) { c.appendChild(a.dom); return a } function u(a) { for (var d = 0; d < c.children.length; d++)c.children[d].style.display = d === a ? "block" : "none"; l = a } var l = 0, c = document.createElement("div"); c.style.cssText = "position:fixed;top:0;right:0;cursor:pointer;opacity:0.9;z-index:10000"; c.addEventListener("click", function (a) {
+                    a.preventDefault();
+                    u(++l % c.children.length)
+                }, !1); var k = (performance || Date).now(), g = k, a = 0, r = e(new f.Panel("FPS", "#0ff", "#002")), h = e(new f.Panel("MS", "#0f0", "#020")); if (self.performance && self.performance.memory) var t = e(new f.Panel("MB", "#f08", "#201")); u(0); return {
+                    REVISION: 16, dom: c, addPanel: e, showPanel: u, begin: function () { k = (performance || Date).now() }, end: function () {
+                        a++; var c = (performance || Date).now(); h.update(c - k, 200); if (c > g + 1E3 && (r.update(1E3 * a / (c - g), 100), g = c, a = 0, t)) {
+                            var d = performance.memory; t.update(d.usedJSHeapSize /
+                                1048576, d.jsHeapSizeLimit / 1048576)
+                        } return c
+                    }, update: function () { k = this.end() }, domElement: c, setMode: u
+                }
+            }; f.Panel = function (e, f, l) {
+                var c = Infinity, k = 0, g = Math.round, a = g(window.devicePixelRatio || 1), r = 80 * a, h = 48 * a, t = 3 * a, v = 2 * a, d = 3 * a, m = 15 * a, n = 74 * a, p = 30 * a, q = document.createElement("canvas"); q.width = r; q.height = h; q.style.cssText = "width:80px;height:48px"; var b = q.getContext("2d"); b.font = "bold " + 9 * a + "px Helvetica,Arial,sans-serif"; b.textBaseline = "top"; b.fillStyle = l; b.fillRect(0, 0, r, h); b.fillStyle = f; b.fillText(e, t, v);
+                b.fillRect(d, m, n, p); b.fillStyle = l; b.globalAlpha = .9; b.fillRect(d, m, n, p); return { dom: q, update: function (h, w) { c = Math.min(c, h); k = Math.max(k, h); b.fillStyle = l; b.globalAlpha = 1; b.fillRect(0, 0, r, m); b.fillStyle = f; b.fillText(g(h) + " " + e + " (" + g(c) + "-" + g(k) + ")", t, v); b.drawImage(q, d + a, m, n - a, p, d, m, n - a, p); b.fillRect(d + n - a, m, a, p); b.fillStyle = l; b.globalAlpha = .9; b.fillRect(d + n - a, m, a, g((1 - h / w) * p)) } }
+            }; return f
+        });
+		document.addEventListener('DOMContentLoaded', async () => {
+
+			// 로그를 표시할 컨테이너 생성
+			const logContainer = document.createElement('div');
+			logContainer.id = 'log-container';
+			logContainer.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.8); color: white; font-family: monospace; padding: 10px; z-index: 9999; transition: max-height 0.3s ease-out;';
+
+			// 토글 버튼 생성
+			const toggleButton = document.createElement('button');
+			toggleButton.textContent = '▲';
+			toggleButton.style.cssText = 'position: absolute; top: 0; right: 10px; background: none; border: none; color: white; font-size: 16px; cursor: pointer;';
+
+			// 토글 기능 구현
+			let isMinimized = false;
+			toggleButton.onclick = function () {
+				if (isMinimized) {
+					logContainer.style.maxHeight = '200px';
+					toggleButton.textContent = '▲';
+				} else {
+					logContainer.style.maxHeight = '30px';
+					toggleButton.textContent = '▼';
+				}
+				isMinimized = !isMinimized;
+			};
+
+			logContainer.appendChild(toggleButton);
+			document.body.appendChild(logContainer);
+
+			// console 메소드 오버라이드
+			const originalConsole = {
+				log: console.log,
+				error: console.error,
+				warn: console.warn,
+				info: console.info
+			};
+
+			function logToPage(message, type) {
+				const logElement = document.createElement('div');
+				logElement.textContent = `[${type.toUpperCase()}] ${message}`;
+				logElement.style.color = type === 'error' ? 'red' : type === 'warn' ? 'yellow' : 'white';
+				logContainer.appendChild(logElement);
+				logContainer.scrollTop = logContainer.scrollHeight;
+			}
+
+			console.log = function () {
+				logToPage(Array.from(arguments).join(' '), 'log');
+				originalConsole.log.apply(console, arguments);
+			};
+
+			console.error = function () {
+				logToPage(Array.from(arguments).join(' '), 'error');
+				originalConsole.error.apply(console, arguments);
+			};
+
+			console.warn = function () {
+				logToPage(Array.from(arguments).join(' '), 'warn');
+				originalConsole.warn.apply(console, arguments);
+			};
+
+			console.info = function () {
+				logToPage(Array.from(arguments).join(' '), 'info');
+				originalConsole.info.apply(console, arguments);
+			};
+		});
+
+    </script>
+
+
+
+    <script>
+        console.log('hello?');
+        // Set up the scene, camera, and renderer
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1600);
+        camera.position.y = 1;
+        camera.position.z = 0;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x111111); // Light grey background color
+        renderer.shadowMap.enabled = true; // 그림자 맵 활성화
+        document.body.appendChild(renderer.domElement);
+
+        // Stats 설정
+        const stats = new Stats();
+        document.body.appendChild(stats.dom);
+
+        // 키 입력 및 마우스 상태 관리
+        let previousMouseX = 0, previousMouseY = 0;
+        let rotationSpeed = 0.005;
+
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.05); // Soft white light
+        scene.add(ambientLight);
+
+        window.addEventListener('resize', onWindowResize);
+        function onWindowResize() {
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+        }
+        // 키보드 이벤트 리스너
+        const keys = {};
+        const keyActions = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
+
+        function setKeyState(key, state) {
+            const inputTextArea = document.getElementById('textinput');
+
+            if (keyActions.includes(key) && document.activeElement !== inputTextArea) {
+                event.preventDefault();
+                keys[key] = state;
+                if (key === ' ' && state === true) { //'Space' key is set as ' ';
+                }
+            }
+        }
+
+        document.addEventListener('keydown', (event) => setKeyState(event.key, true));
+        document.addEventListener('keyup', (event) => setKeyState(event.key, false));
+
+        // 마우스 이벤트 리스너
+        let lastX, lastY, isDragging = false;
+
+        function handleStart(x, y) {
+            isDragging = true;
+            lastX = x;
+            lastY = y;
+        }
+
+        function handleMove(x, y) {
+            if (!isDragging) return;
+            const deltaX = x - lastX;
+            const deltaY = y - lastY;
+
+            // 카메라의 현재 전방향과 오른쪽 방향을 구합니다.
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            const cameraRight = new THREE.Vector3().crossVectors(camera.up, cameraDirection).normalize();
+
+            // 마우스 움직임에 따라 회전 축을 설정합니다.
+            const angleX = deltaX * 0.005;  // 좌우 이동
+            const angleY = deltaY * 0.005;  // 상하 이동
+
+            const quaternionX = new THREE.Quaternion().setFromAxisAngle(camera.up, -angleX);  // 카메라 오른쪽 축
+            const quaternionY = new THREE.Quaternion().setFromAxisAngle(cameraRight, angleY);  // 카메라 전방향 축
+
+            camera.quaternion.multiplyQuaternions(quaternionX, camera.quaternion);
+            camera.quaternion.multiplyQuaternions(quaternionY, camera.quaternion);
+
+            lastX = x;
+            lastY = y;
+            //camera.updateProjectionMatrix();
+        }
+
+        function handleEnd() {
+            isDragging = false;
+        }
+
+        // 마우스 이벤트
+        document.addEventListener('mousedown', (event) => {
+            handleStart(event.clientX, event.clientY);
+        });
+        document.addEventListener('mousemove', (event) => {
+            handleMove(event.clientX, event.clientY);
+        });
+        document.addEventListener('mouseup', handleEnd);
+
+        // 터치 이벤트
+        document.addEventListener('touchstart', (event) => {
+            const touch = event.touches[0];
+            handleStart(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (event) => {
+            const touch = event.touches[0];
+            handleMove(touch.clientX, touch.clientY);
+            event.preventDefault(); // 스크롤 방지
+        }, { passive: false });
+
+        document.addEventListener('touchend', handleEnd);
+
+        // 카메라 이동 업데이트
+        function updateCamera() {
+            const speed = 0.1;
+            const direction = new THREE.Vector3();
+
+            // 현재 카메라의 방향을 기준으로 전진, 후진 벡터 계산
+            camera.getWorldDirection(direction);
+
+            // 새로운 카메라 위치 계산
+            const newPosition = camera.position.clone();
+
+            if (keys['ArrowUp']) newPosition.addScaledVector(direction, speed);
+            if (keys['ArrowDown']) newPosition.addScaledVector(direction, -speed);
+
+            // 좌우 이동을 위해 원래 벡터에 대해 오른쪽 방향으로 90도 회전
+            var direction2 = direction;
+            direction.crossVectors(camera.up, direction).normalize();
+            var rightDirection = direction;
+            if (keys['ArrowLeft']) newPosition.addScaledVector(direction, speed);
+            if (keys['ArrowRight']) newPosition.addScaledVector(direction, -speed);
+
+            camera.updateProjectionMatrix();
+        }
+
+        // Create a plane in the xz-plane
+        const planeGeometry = new THREE.PlaneGeometry(200, 200);
+        const planeMaterial = new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = -Math.PI / 2;  // Rotate to lie flat on the xz-plane
+        scene.add(plane);
+
+        // 격자 무늬를 추가할 GridHelper 생성
+        const gridSize = 200; // 격자의 전체 크기
+        const gridSpacing = 1; // 격자의 간격
+        const gridHelper = new THREE.GridHelper(gridSize, gridSize / gridSpacing, 0x666666, 0x666666); // 첫 번째 매개변수는 전체 크기, 두 번째 매개변수는 격자 개수, 세 번째 매개변수는 격자 색상, 네 번째 매개변수는 선 색상
+        gridHelper.position.y = 0.01; // 바닥 평면과 겹치지 않도록 약간 띄웁니다.
+        scene.add(gridHelper);
+
+        const starsGeometry = new THREE.BufferGeometry();
+        const starCount = 10000;
+        const positions = new Float32Array(starCount * 3);
+        const colors = new Float32Array(starCount * 3); // 각 별의 색상
+        const radius = 1500;
+        const sizes = new Float32Array(starCount); // 크기 배열
+
+        function generateTemperature() {
+            // 모든 별의 온도를 흰색이 나타나는 범위인 6000K ~ 10000K로 고정
+            const temperature = 4000 + Math.random() * 20000; // 6000K에서 10000K 사이의 균일 분포
+            //const temperature = 8000; // 6000K에서 10000K 사이의 균일 분포
+            return temperature;
+        }
+        function planck(T, lambda) {
+            const h = 6.62607015e-34;  // Planck constant (Joule second)
+            const c = 2.998e8;         // Speed of light (meters per second)
+            const k = 1.380649e-23;    // Boltzmann constant (Joule per kelvin)
+
+            const exponent = (h * c) / (lambda * k * T);
+            const density = (8 * Math.PI * h * c) / (Math.pow(lambda, 5) * (Math.exp(exponent) - 1));
+
+            return density;
+        }
+        function temperatureToColor(T) {
+            const wavelengths = { red: 700e-9, green: 546.1e-9, blue: 435.8e-9 };  // Wavelengths in meters
+            const scale = { red: 255 * 12.0e-8, green: 255 * 2.0e-9, blue: 255 * 8.25e-7 };  // Scale factors for color intensities
+            //const scale = { red: 1e-13, green: 1.5e-13, blue: 2.5e-13 };  // Adjusted scale factors for color intensities
+
+            let rgb = { red: 0, green: 0, blue: 0 };
+            for (const color in wavelengths) {
+                const intensity = planck(T, wavelengths[color]);
+                rgb[color] = Math.round(Math.max(0, Math.min(255, intensity * scale[color])));
+            }
+            return new THREE.Color(rgb.red, rgb.green, rgb.blue);
+        }
+
+
+        for (let i = 0; i < starCount; i++) {
+            const theta = Math.random() * 2 * Math.PI;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const x = radius * Math.sin(phi) * Math.cos(theta);
+            const y = radius * Math.sin(phi) * Math.sin(theta);
+            const z = radius * Math.cos(phi);
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
+
+            const temperature = generateTemperature();
+            const color = temperatureToColor(temperature);
+
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+
+            sizes[i] = Math.random() * 3 + 0.4; // 별 크기를 0.4에서 2.0까지 랜덤 설정
+        }
+
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        starsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        starsGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        const starsMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+    attribute float size;
+    attribute vec3 color;
+    varying vec3 vColor;
+    void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+    }
+    `,
+            fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+        gl_FragColor = vec4(vColor, 1.0);
+    }
+    `,
+            blending: THREE.AdditiveBlending,
+            depthTest: true,
+            transparent: true
+        });
+
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
+
+        // 마우스 클릭 이벤트
+        window.addEventListener('click', onMouseClick);
+        // 마우스와 raycaster 설정
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+
+        function onMouseClick(event) {
+            // 마우스 위치 계산 (정규화)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            camera.updateProjectionMatrix();
+            door.geometry.computeBoundingBox();
+
+            // raycaster 업데이트
+            raycaster.setFromCamera(mouse, camera);
+
+            // 교차되는 객체 계산
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+        }
+
+        // Function to create a grid line
+        function createGridLine(start, end, color = 0xff0000) {
+            const material = new THREE.LineBasicMaterial({ color: color });
+            const points = [];
+            points.push(start);
+            points.push(end);
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, material);
+            scene.add(line);
+        }
+
+        // Create right ascension lines (longitude) as circles passing through the celestial poles
+        for (let i = 0; i < 24; i++) {
+            const angle = (i / 24) * Math.PI * 2;
+            const points = [];
+            for (let j = -90; j <= 90; j += 1) {
+                const lat = THREE.MathUtils.degToRad(j);
+                const x = 1500 * Math.cos(lat) * Math.sin(angle);
+                const y = 1500 * Math.sin(lat);
+                const z = 1500 * Math.cos(lat) * Math.cos(angle);
+                points.push(new THREE.Vector3(x, y, z));
+            }
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xff0000 }));
+            scene.add(line);
+        }
+
+        // Create declination lines (latitude)
+        for (let i = -80; i <= 80; i += 10) {
+            const lat = THREE.MathUtils.degToRad(i);
+            const radius = 1500 * Math.cos(lat);
+            const y = 1500 * Math.sin(lat);
+            const points = [];
+            for (let j = 0; j <= 360; j += 10) {
+                const lon = THREE.MathUtils.degToRad(j);
+                points.push(new THREE.Vector3(radius * Math.cos(lon), y, radius * Math.sin(lon)));
+            }
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
+            scene.add(line);
+        }
+
+
+        function animate() {
+
+            updateCamera();
+            stats.update();
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+
+</body>
+
+</html>

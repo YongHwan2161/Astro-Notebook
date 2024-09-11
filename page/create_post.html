@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Post</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <script src="/script/includeHTML.js"></script>
+    <script defer src="/script/script.js"></script>
+    <script defer src="/script/gnb.js"></script>
+    <script deger src="/script/login.js"></script>
+    <script defer src="/script/board.js"></script>
+    <script defer src="/script/search.js"></script>
+</head>
+
+<body>
+    <div data-include-path="/asset/html/gnb.html"></div>
+
+    <figure>
+        <div class="container">
+            <h1>새 글 작성</h1>
+            <div class="input-box">
+                <div class="input-box-text">제목</div>
+                <input type="text" placeholder="제목" class="input-box-input"></input>
+            </div>
+            <div class="input-box">
+                <div class="input-box-text">카테고리</div>
+                <input type="text" placeholder="카테고리" class="input-box-input"></input>
+            </div>
+            <div class="input-box-large">
+                <div class="input-box-text">요약</div>
+                <textarea name="abstract" rows="3" placeholder="내용을 간단하게 설명해주세요" class="input-box-input"></textarea>
+            </div>
+            <div class="input-box-large">
+                <div class="input-box-text">본문</div>
+                <textarea name="abstract" rows="30" placeholder="내용을 간단하게 설명해주세요" class="input-box-input"></textarea>
+            </div>
+            <div class="input-box">
+                <div class="input-box-text">태그</div>
+                <input type="text" placeholder="해시태그(#)로 구분해주세요" class="input-box-input"></input>
+            </div>
+        </div>
+        <div class="btn-group" id="group-align-std">
+            <div class="btn-rtg" id="btn-dny">취소하기</div>
+            <div class="btn-group">
+                <div class="btn-rtg">임시저장</div>
+                <div class="btn-rtg" id="btn-agr">등록하기</div>
+            </div>
+        </div>
+    </figure>
+
+    <script>
+
+        includeHTML();
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,66 @@
+<section id="login-modal">
+    <div class="modal-popup" id="login-popup">
+        <div class="modal-popup-title">
+            <div class="logo-int">
+                <img src="image/lightlogo.png" class="logo">
+            </div>
+            <h4>ASTRANTIS</h4>
+            <button class="btn-sqr" id="modal-popup-close">
+                <span class="material-symbols-outlined">
+                    close
+                </span>
+            </button>
+        </div>
+        <div class="login-set">
+            <div class="login-part" id="kakao">
+                <img src="image/kakao_symbol.png" class="social-logo-img">
+                <a href="javascript:void(0)" onclick="loginWithKakao();">
+                    <span>카카오 로그인</span>
+                </a>
+            </div>
+            <div class="login-part" id="naver">
+                <img src="image/naver_symbol.svg" class="social-logo-img">
+                <a href="#">네이버로 시작하기</a>
+            </div>
+            <div class="login-part" id="google">
+                <img src="image/google_symbol.png" class="social-logo-img">
+                <a href="#">구글로 시작하기</a>
+            </div>
+            <div class="login-part" id="apple">
+                <img src="image/apple_symbol.svg" class="social-logo-img">
+                <a href="#">Apple로 계속하기</a>
+            </div>
+        </div>
+        <div class="login-info">
+            <div class="login-info-link">
+                <a href="#">이용약관</a>
+                <a href="#">개인정보처리방침</a>
+            </div>
+            <div class="copyright">
+                <p>Copyright (c)ASTRO NOTATION. All rights reserved</p>
+            </div>
+        </div>
+    </div>
+</section>
+<script>
+    // SDK를 초기화 합니다. 사용할 앱의 JavaScript 키를 설정해야 합니다.
+    Kakao.init('aff510f7bfafede5e872ac10fa834a3b');
+    // SDK 초기화 여부를 판단합니다.
+    console.log(Kakao.isInitialized());
+
+    function loginWithKakao() {
+        Kakao.Auth.authorize({
+            redirectUri: 'https://improved-zebra-wpw5q79q7wg3559r-8080.app.github.dev/kakao-oauth',
+            state: 'random_state_string',
+            scope: 'profile_nickname'
+        })
+            .then(function (authObj) {
+                console.log(authObj);
+                // 서버에 인증 코드를 전송하는 로직
+            })
+            .catch(function (err) {
+                console.error(err);
+            });
+    }
+
+</script>

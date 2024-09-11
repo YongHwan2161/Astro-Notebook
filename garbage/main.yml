@@ -1,0 +1,59 @@
+name: Build and Deploy to GCP VM
+
+on:
+  push:
+    branches:
+      - main  # 또는 배포하려는 브랜치 명시
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate gcloud CLI
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT }}
+        install_components: "kubectl"
+
+    - name: Build the project
+      run: |
+        # 빌드 명령 실행, 예: make, gcc, g++, javac 등
+        echo "Building the project..."
+        # 여기에 빌드 명령을 추가하세요
+
+    - name: 실행 중인 server 중지
+      run: |
+        echo "Running deployment script on VM..."
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} --command 'sudo pkill -f server'
+
+    - name: Create target directory on GCP VM
+      run: |
+        echo "Creating target directory on Google Cloud VM..."
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets"
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets/css"
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets/fonts"
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/assets/js"
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} -- "mkdir -p ~/images"
+  
+    - name: Copy files to GCP VM
+      run: |
+        echo "Deploying to Google Cloud VM..."
+        gcloud compute scp ./server ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
+                gcloud compute scp ./server.cpp ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
+        gcloud compute scp --recurse ./assets ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
+        gcloud compute scp --recurse ./images ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
+                gcloud compute scp --recurse ./uploads ${{ secrets.VM_NAME }}:~/ --zone ${{ secrets.VM_ZONE }}
+
+    - name: Execute deployment script on VM
+      run: |
+        echo "Running deployment script on VM..."
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} --command 'chmod +x server'
+        gcloud compute ssh ${{ secrets.VM_NAME }} --zone ${{ secrets.VM_ZONE }} --command './server > /dev/null 2>&1 &'

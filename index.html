@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASTRO NOTATION</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <script src="/script/includeHTML.js"></script>
+    <script defer src="/script/script.js"></script>
+    <script defer src="/script/gnb.js"></script>
+    <script deger src="/script/login.js"></script>
+    <script defer src="/script/board.js"></script>
+    <script defer src="/script/search.js"></script>
+
+    <!-- kakao 로그인 기능 구현 -->
+    <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"
+        integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4"
+        crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div data-include-path="/asset/html/gnb.html"></div>
+    <figure>
+        <div id="main-banner-text">
+            <h1>ASTRO NOTATION</h1>
+            <h4>Explore the story of the distance universe</h4>
+            <div id="btn-login">
+                <h4>Sign Up</h4>
+            </div>
+            <div id="btn-login-link">
+                <a href="/page/login.html">
+                    <h4>Sign Up</h4>
+                </a>
+            </div>
+        </div>
+    </figure>
+    <div data-include-path="/asset/html/loginp.html"></div>
+    <script>
+
+        includeHTML();
+
+    </script>
+</body>
+
+</html>

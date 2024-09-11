@@ -1,0 +1,225 @@
+<!DOCTYPE HTML>
+<!--
+	Hielo by TEMPLATED
+	templated.co @templatedco
+	Released for free under the Creative Commons Attribution 3.0 license (templated.co/license)
+-->
+<html>
+
+<head>
+	<title>Progect page</title>
+	<meta charset="utf-8">
+	<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="/assets/css/main.css">
+
+	<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+	<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+	<style>
+		#form1 {
+			display: none;
+		}
+	</style>
+</head>
+
+<body class="subpage">
+
+	<!-- Header -->
+	<header id="header">
+		<div class="logo"><a href="/assets/html/index.html">Project <span>by ___</span></a></div>
+		<a href="#menu">Menu</a>
+	</header>
+	<!-- Nav -->
+	<nav id="menu">
+		<ul class="links">
+			<li><a href="/assets/html/index.html">Home</a></li>
+			<li><a href="/assets/html/generic.html">Project</a></li>
+			<li><a href="/assets/html/elements.html">Elements</a></li>
+		</ul>
+	</nav>
+
+	<!-- One -->
+	<section id="One" class="wrapper style3">
+		<div class="inner">
+			<header class="align-center">
+				<p>Eleifend vitae urna</p>
+				<h2>Our Progects</h2>
+			</header>
+		</div>
+	</section>
+
+	<!-- Two -->
+	<section id="two" class="wrapper style2">
+		<div class="inner">
+			<div class="box">
+				<div class="content">
+					<div class="11u 12u$(xsmall)">
+						<input type="button" value="게시글 작성" onclick="EditPost()">
+					</div>
+					<form id="form1">
+						<div class="form-group">
+							<input id="name" name="name" type="text" placeholder="제목">
+						</div>
+						<div class="form-group">
+							<div id="editor2"></div>
+						</div>
+						<button type="submit">저장</button>
+						<input type="button" value="save" onclick="savePost()">
+					</form>
+
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Footer -->
+	<footer id="footer">
+		<div class="container">
+			<ul class="icons">
+				<li><a href="#" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+				<li><a href="#" class="icon fa-facebook"><span class="label">Facebook</span></a></li>
+				<li><a href="#" class="icon fa-instagram"><span class="label">Instagram</span></a></li>
+				<li><a href="#" class="icon fa-envelope-o"><span class="label">Email</span></a></li>
+			</ul>
+		</div>
+	</footer>
+	<div class="copyright">
+		Made with <a href="https://templated.co/">Templated</a>.
+	</div>
+
+	<!-- Scripts -->
+	<script src="/assets/js/jquery.min.js"></script>
+	<script src="/assets/js/jquery.scrollex.min.js"></script>
+	<script src="/assets/js/skel.min.js"></script>
+	<script src="/assets/js/util.js"></script>
+	<script src="/assets/js/main.js"></script>
+	<script>
+		document.addEventListener('DOMContentLoaded', () => {
+			const token = localStorage.getItem('token');
+			if (token) {
+				verifyToken(token);
+			}
+		});
+
+		function verifyToken(token) {
+			fetch('/verify-token', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded'
+				},
+				body: `token=${encodeURIComponent(token)}`
+			})
+				.then(response => response.json())
+				.then(data => {
+					if (data.success) {
+						showWelcomeMessage(data.username);
+					} else {
+						localStorage.removeItem('token');
+						showLoginForm();
+					}
+				})
+				.catch(error => {
+					console.error('Error:', error);
+				});
+		}
+
+		function EditPost() {
+			var editor = document.getElementById('editor2');
+			fetch('/assets/html/edit.html')
+				.then(response => response.text())
+				.then(data => {
+					editor.innerHTML = data;
+					document.getElementById('form1').style.display = 'block';
+					// Initialize Quill editor after inserting HTML
+					var script = document.createElement('script');
+					script.src = "https://cdn.jsdelivr.net/npm/quill@1.3.6/dist/quill.js";
+					script.onload = function () {
+						const quill = new Quill('#editor-container', {
+							modules: {
+								toolbar: [
+									['bold', 'italic'],
+									['link', 'blockquote', 'code-block', 'image'],
+									[{ list: 'ordered' }, { list: 'bullet' }],
+								],
+							},
+							theme: 'snow',
+						});
+					};
+					document.body.appendChild(script);
+				})
+				.catch(error => console.error('Error loading the HTML file:', error));
+		}
+
+		function savePost() {
+			event.preventDefault(); // Prevent form submission
+			alert('savePost call');
+			const title = document.getElementById('name').value;
+			const content = quill.root.innerHTML;
+			const author = "작성자"; // Replace with the actual author value if available
+			const timestamp = new Date().toISOString(); // 현재 시각을 ISO 형식으로 저장
+
+			const postData = {
+				title: title,
+				content: content,
+				author: author,
+				timestamp: timestamp
+			};
+
+			fetch('/save_post', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(postData)
+			})
+				.then(response => response.json())
+				.then(data => {
+					if (data.success) {
+						alert('Post saved successfully!');
+					} else {
+						alert('Failed to save post.');
+					}
+				})
+				.catch(error => {
+					console.error('Error:', error);
+				});
+		}
+		// document.getElementById('form1').addEventListener('submit', function (event) {
+		// 	event.preventDefault(); // Prevent form submission
+
+		// 	const title = document.getElementById('name').value;
+		// 	const content = quill.root.innerHTML;
+		// 	const author = "작성자"; // Replace with the actual author value if available
+		// 	const timestamp = new Date().toISOString(); // 현재 시각을 ISO 형식으로 저장
+
+		// 	const postData = {
+		// 		title: title,
+		// 		content: content,
+		// 		author: author,
+		// 		timestamp: timestamp
+		// 	};
+
+		// 	fetch('/save_post', {
+		// 		method: 'POST',
+		// 		headers: {
+		// 			'Content-Type': 'application/json'
+		// 		},
+		// 		body: JSON.stringify(postData)
+		// 	})
+		// 		.then(response => response.json())
+		// 		.then(data => {
+		// 			if (data.success) {
+		// 				alert('Post saved successfully!');
+		// 			} else {
+		// 				alert('Failed to save post.');
+		// 			}
+		// 		})
+		// 		.catch(error => {
+		// 			console.error('Error:', error);
+		// 		});
+		// });
+
+	</script>
+</body>
+
+</html>

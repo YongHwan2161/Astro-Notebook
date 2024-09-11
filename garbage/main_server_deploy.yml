@@ -1,0 +1,52 @@
+name: Build and Deploy to Personal Linux Desktop
+
+on:
+  push:
+    branches:
+      - main # 또는 배포하려는 브랜치 명시
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Build the project
+        run: |
+          # 빌드 명령 실행, 예: make, gcc, g++, javac 등
+          echo "Building the project..."
+          # 여기에 빌드 명령을 추가하세요
+
+      - name: Stop running server
+        run: |
+          echo "Stopping running server..."
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }} ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} 'sudo pkill -f server'
+
+      - name: Create target directories on remote machine
+        run: |
+          echo "Creating target directories on remote machine..."
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }} ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} 'mkdir -p ~/assets/css ~/assets/fonts ~/assets/js ~/assets/html ~/images'
+
+      - name: Copy files to remote machine
+        run: |
+          echo "Copying files to remote machine..."
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./server ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./server.cpp ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./asset ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./image ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./css ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./page ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./script ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./index.html ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }}" ./uploads ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:~/
+      - name: Execute deployment script on remote machine
+        run: |
+          echo "Executing deployment script on remote machine..."
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }} ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} 'chmod +x ~/server'
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.REMOTE_PORT }} ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} './server > /dev/null 2>&1 &'

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Celestial Simulator</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script> -->
+    <script src="/assets/js/converted_stardata.js"></script>
+    <script type="module" src="/assets/js/modules/starMap/main.js"></script>
+</body>
+</html>
+<!-- <!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Celestial Simulator</title>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="/assets/js/converted_stardata.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Orbit controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.rotateSpeed = 0.5;
+        controls.minDistance = 1;
+        controls.maxDistance = 450;
+
+        // Celestial sphere
+        const sphereGeometry = new THREE.SphereGeometry(500, 64, 64);
+        const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
+        const celestialSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        scene.add(celestialSphere);
+
+        // Ground plane
+        const groundGeometry = new THREE.CircleGeometry(500, 32);
+        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x228B22, side: THREE.DoubleSide });
+        const groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+        groundPlane.rotation.x = Math.PI / 2;
+        groundPlane.position.y = -0.1;
+        scene.add(groundPlane);
+
+        // Celestial objects container
+        const celestialContainer = new THREE.Object3D();
+        scene.add(celestialContainer);
+
+        // Right Ascension and Declination grid
+        function createRADecGrid() {
+            const gridHelper = new THREE.Object3D();
+
+            // RA lines (longitude)
+            for (let i = 0; i < 24; i++) {
+                const material = new THREE.LineBasicMaterial({ color: 0x444444 });
+                const points = [];
+                for (let j = 0; j <= 180; j++) {
+                    const phi = THREE.MathUtils.degToRad(j - 90);
+                    const theta = THREE.MathUtils.degToRad((i / 24) * 360);
+                    const x = 499 * Math.cos(phi) * Math.cos(theta);
+                    const y = 499 * Math.sin(phi);
+                    const z = 499 * Math.cos(phi) * Math.sin(theta);
+                    points.push(new THREE.Vector3(x, y, z));
+                }
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geometry, material);
+                gridHelper.add(line);
+            }
+
+            // Dec lines (latitude)
+            for (let i = -80; i <= 80; i += 20) {
+                const material = new THREE.LineBasicMaterial({ color: 0x444444 });
+                const points = [];
+                const phi = THREE.MathUtils.degToRad(i);
+                for (let j = 0; j <= 360; j++) {
+                    const theta = THREE.MathUtils.degToRad(j);
+                    const x = 499 * Math.cos(phi) * Math.cos(theta);
+                    const y = 499 * Math.sin(phi);
+                    const z = 499 * Math.cos(phi) * Math.sin(theta);
+                    points.push(new THREE.Vector3(x, y, z));
+                }
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geometry, material);
+                gridHelper.add(line);
+            }
+
+            return gridHelper;
+        }
+
+        const raDecGrid = createRADecGrid();
+        celestialContainer.add(raDecGrid);
+        //scene.add(raDecGrid);
+
+        // Star data and other celestial object setup remain the same
+        // Extended star data (more stars)
+        // const starData = [
+        //     { name: "Sirius", ra: 101.287, dec: -16.716, mag: -1.46 },
+        //     { name: "Canopus", ra: 95.987, dec: -52.695, mag: -0.74 },
+        //     { name: "Rigil Kentaurus", ra: 219.90, dec: -60.83, mag: -0.27 },
+        //     { name: "Arcturus", ra: 213.915, dec: 19.182, mag: -0.05 },
+        //     { name: "Vega", ra: 279.234, dec: 38.784, mag: 0.03 },
+        //     { name: "Capella", ra: 79.172, dec: 45.998, mag: 0.08 },
+        //     { name: "Rigel", ra: 78.634, dec: -8.202, mag: 0.13 },
+        //     { name: "Procyon", ra: 114.825, dec: 5.225, mag: 0.38 },
+        //     { name: "Achernar", ra: 24.428, dec: -57.236, mag: 0.46 },
+        //     { name: "Betelgeuse", ra: 88.793, dec: 7.407, mag: 0.50 },
+        //     { name: "Hadar", ra: 210.956, dec: -60.373, mag: 0.61 },
+        //     { name: "Altair", ra: 297.696, dec: 8.868, mag: 0.77 },
+        //     { name: "Acrux", ra: 201.285, dec: -63.099, mag: 0.77 },
+        //     { name: "Aldebaran", ra: 68.980, dec: 16.509, mag: 0.85 },
+        //     { name: "Antares", ra: 247.352, dec: -26.432, mag: 0.96 },
+        //     { name: "Spica", ra: 201.298, dec: -11.161, mag: 0.98 },
+        //     { name: "Pollux", ra: 116.329, dec: 28.026, mag: 1.14 },
+        //     { name: "Fomalhaut", ra: 344.413, dec: -29.622, mag: 1.16 },
+        //     { name: "Deneb", ra: 310.358, dec: 45.280, mag: 1.25 },
+        //     { name: "Regulus", ra: 152.093, dec: 11.967, mag: 1.36 },
+        //     { name: "Adhara", ra: 104.656, dec: -28.972, mag: 1.50 },
+        //     { name: "Castor", ra: 113.649, dec: 31.888, mag: 1.58 },
+        //     { name: "Gacrux", ra: 187.791, dec: -57.113, mag: 1.63 },
+        //     { name: "Shaula", ra: 263.402, dec: -37.104, mag: 1.62 },
+        //     { name: "Bellatrix", ra: 81.282, dec: 6.349, mag: 1.64 },
+        //     { name: "Elnath", ra: 81.573, dec: 28.607, mag: 1.65 },
+        //     { name: "Miaplacidus", ra: 138.300, dec: -69.717, mag: 1.69 },
+        //     { name: "Alnilam", ra: 84.053, dec: -1.202, mag: 1.69 },
+        //     { name: "Alnair", ra: 332.058, dec: -46.961, mag: 1.74 },
+        //     { name: "Alnitak", ra: 83.818, dec: -1.943, mag: 1.74 },
+        //     { name: "Alioth", ra: 193.507, dec: 55.960, mag: 1.77 },
+        //     { name: "Mirfak", ra: 51.080, dec: 49.861, mag: 1.79 },
+        //     { name: "Dubhe", ra: 165.932, dec: 61.751, mag: 1.79 },
+        //     { name: "Regor", ra: 135.175, dec: -47.337, mag: 1.81 },
+        //     { name: "Wezen", ra: 107.098, dec: -26.393, mag: 1.83 },
+        //     { name: "Kaus Australis", ra: 276.043, dec: -34.384, mag: 1.85 },
+        //     { name: "Alkaid", ra: 206.885, dec: 49.313, mag: 1.85 },
+        //     { name: "Sargas", ra: 264.972, dec: -43.024, mag: 1.86 },
+        //     { name: "Avior", ra: 125.628, dec: -59.509, mag: 1.86 },
+        //     { name: "Alkaid", ra: 206.885, dec: 49.313, mag: 1.86 },
+        //     { name: "Menkalinan", ra: 89.882, dec: 44.947, mag: 1.90 },
+        //     { name: "Atria", ra: 252.166, dec: -69.027, mag: 1.91 },
+        //     { name: "Alhena", ra: 99.428, dec: 16.399, mag: 1.92 },
+        //     { name: "Peacock", ra: 306.412, dec: -56.735, mag: 1.94 },
+        //     { name: "Alsephina[4]", ra: 152.647, dec: -40.466, mag: 1.96 },
+        //     { name: "Mirzam", ra: 95.674, dec: -17.956, mag: 1.98 },
+        //     { name: "Polaris", ra: 37.954, dec: 89.264, mag: 1.98 },
+        //     { name: "Alphard", ra: 141.897, dec: -8.659, mag: 1.99 },
+        //     { name: "Scheat", ra: 346.190, dec: 28.083, mag: 2.42 },
+        //     { name: "Almaaz", ra: 84.912, dec: 43.823, mag: 2.99 },
+        //     { name: "Rasalgethi", ra: 258.662, dec: 14.390, mag: 3.35 },
+        //     { name: "Tau Ceti", ra: 26.017, dec: -15.937, mag: 3.50 },
+        //     { name: "Delta Pavonis", ra: 306.824, dec: -66.181, mag: 3.56 },
+        //     { name: "Ran", ra: 53.232, dec: -9.458, mag: 3.74 },
+        //     { name: "V382 Carinae", ra: 164.915, dec: -59.347, mag: 3.93 },
+        //     { name: "Eta Carinae", ra: 161.264, dec: -59.684, mag: 4.3 },
+        //     { name: "R Doradus", ra: 69.190, dec: -62.077, mag: 4.83 },
+        //     { name: "Lacaille 8760", ra: 319.313, dec: -38.867, mag: 6.67 },
+        //     { name: "Proxima Centauri", ra: 217.428, dec: -62.679, mag: 11.05 },
+        //     { name: "Barnard's Star", ra: 269.454, dec: 4.693, mag: 9.54 },
+        //     { name: "Lalande 21185", ra: 165.839, dec: 35.969, mag: 7.52 },
+        //     { name: "Epsilon Eridani", ra: 53.232, dec: -9.458, mag: 3.73 },
+        //     { name: "Lacaille 9352", ra: 346.460, dec: -35.853, mag: 7.34 },
+        //     { name: "Ross 154", ra: 283.252, dec: -23.862, mag: 10.44 },
+        //     { name: "Ross 248", ra: 351.506, dec: 44.198, mag: 12.29 },
+        //     { name: "Groombridge 34", ra: 13.779, dec: 43.228, mag: 8.09 },
+        //     { name: "Epsilon Indi", ra: 330.840, dec: -56.786, mag: 4.69 },
+        //     { name: "Luyten's Star", ra: 109.541, dec: 35.958, mag: 9.87 },
+        //     { name: "Teegarden's Star", ra: 43.254, dec: 16.882, mag: 15.08 },
+        //     { name: "Kapteyn's Star", ra: 77.919, dec: -45.018, mag: 8.85 },
+        //     { name: "Lacaille 8760", ra: 319.313, dec: -38.867, mag: 6.67 },
+        //     { name: "Kruger 60", ra: 343.059, dec: 57.695, mag: 9.59 },
+        //     { name: "DX Cancri", ra: 114.826, dec: 16.102, mag: 14.81 },
+        //     { name: "YZ Ceti", ra: 18.137, dec: -16.967, mag: 12.02 },
+        //     { name: "Luyten's Star", ra: 109.541, dec: 35.958, mag: 9.87 },
+        //     { name: "Tau Ceti", ra: 26.017, dec: -15.937, mag: 3.50 },
+        //     { name: "Gliese 1061", ra: 56.220, dec: -44.494, mag: 13.03 },
+        //     { name: "YY Geminorum", ra: 112.438, dec: 32.002, mag: 9.07 },
+        //     { name: "Luyten 726-8 A", ra: 23.508, dec: -17.851, mag: 12.54 },
+        //     { name: "Luyten 726-8 B", ra: 23.508, dec: -17.851, mag: 13.02 },
+        //     { name: "Ross 154", ra: 283.252, dec: -23.862, mag: 10.44 },
+        //     { name: "Ross 248", ra: 351.506, dec: 44.198, mag: 12.29 },
+        //     { name: "Wolf 359", ra: 164.120, dec: 7.015, mag: 13.53 },
+        //     { name: "Gliese 1", ra: 1.190, dec: -37.357, mag: 8.56 },
+        //     { name: "Van Maanen's Star", ra: 5.516, dec: 5.390, mag: 12.37 },
+        //     { name: "Gliese 674", ra: 262.587, dec: -46.896, mag: 9.38 },
+        //     { name: "Gliese 687", ra: 263.572, dec: 68.339, mag: 9.15 },
+        //     { name: "Gliese 729", ra: 282.694, dec: -23.836, mag: 10.37 },
+        //     { name: "Gliese 832", ra: 323.391, dec: -49.009, mag: 8.66 },
+        //     { name: "Gliese 884", ra: 344.106, dec: -22.518, mag: 7.87 },
+        //     { name: "Gliese 908", ra: 357.304, dec: 2.400, mag: 8.98 },
+        //     { name: "HD 95735", ra: 165.840, dec: 35.969, mag: 7.52 },
+        //     { name: "HD 217987", ra: 346.460, dec: -35.853, mag: 7.34 },
+        //     { name: "Gliese 1245", ra: 298.723, dec: 44.323, mag: 13.41 },
+        //     { name: "Gliese 473", ra: 188.058, dec: 8.925, mag: 13.22 },
+        //     { name: "Gliese 682", ra: 264.968, dec: -44.319, mag: 10.96 },
+        //     { name: "Gliese 251", ra: 103.704, dec: 33.268, mag: 10.02 },
+        //     { name: "Gliese 205", ra: 82.864, dec: -2.684, mag: 7.97 },
+        //     { name: "Gliese 229", ra: 94.314, dec: -21.824, mag: 8.14 }
+        // ];
+
+        // Constellation data
+        const constellationData = [
+            { name: "Orion", stars: ["Betelgeuse", "Rigel", "Bellatrix", "Saiph", "Alnitak", "Alnilam", "Mintaka"] },
+            { name: "Ursa Major", stars: ["Dubhe", "Merak", "Phecda", "Megrez", "Alioth", "Mizar", "Alkaid"] },
+            { name: "Cassiopeia", stars: ["Schedar", "Caph", "Gamma Cas", "Ruchbah", "Segin"] },
+            { name: "Crux", stars: ["Acrux", "Mimosa", "Gacrux", "Delta Crucis"] },
+            { name: "Canis Major", stars: ["Sirius", "Adhara", "Wezen", "Mirzam"] },
+            { name: "Carina", stars: ["Canopus", "Miaplacidus", "Avior"] },
+            { name: "Boötes", stars: ["Arcturus", "Izar", "Muphrid"] },
+            { name: "Centaurus", stars: ["Rigil Kentaurus", "Hadar", "Menkent"] },
+            { name: "Scorpius", stars: ["Antares", "Shaula", "Sargas"] },
+            { name: "Lyra", stars: ["Vega", "Sheliak", "Sulafat"] },
+            { name: "Cygnus", stars: ["Deneb", "Albireo", "Sadr"] },
+            { name: "Taurus", stars: ["Aldebaran", "Elnath"] },
+            { name: "Leo", stars: ["Regulus", "Denebola", "Algieba"] },
+            { name: "Gemini", stars: ["Pollux", "Castor", "Alhena"] },
+            { name: "Virgo", stars: ["Spica", "Vindemiatrix", "Porrima"] },
+            { name: "Piscis Austrinus", stars: ["Fomalhaut"] },
+            { name: "Cetus", stars: ["Diphda", "Menkar"] },
+            { name: "Eridanus", stars: ["Achernar", "Cursa"] },
+            { name: "Aquila", stars: ["Altair", "Tarazed", "Alshain"] },
+            { name: "Perseus", stars: ["Mirfak", "Algol"] }
+        ];
+
+        // Planet data (simplified positions for demonstration)
+        const planetData = [
+            { name: "Mercury", ra: 50, dec: 10, color: 0xC0C0C0 },
+            { name: "Venus", ra: 100, dec: -5, color: 0xFFA500 },
+            { name: "Mars", ra: 150, dec: 20, color: 0xFF4500 },
+            { name: "Jupiter", ra: 200, dec: -15, color: 0xFFA07A },
+            { name: "Saturn", ra: 250, dec: 5, color: 0xF4A460 }
+        ];
+        function parseRA(ra) {
+            const [h, m, s] = ra.split(/[hms]/).map(parseFloat);
+            return (h + m / 60 + s / 3600) * 15; // Convert to degrees
+        }
+
+        function parseDec(dec) {
+            const parts = dec.split(/[°′″]/).map(part => part.trim());
+            const d = parseFloat(parts[0]);
+            const m = parseFloat(parts[1]);
+            const s = parseFloat(parts[2]);
+            const sign = d < 0 ? -1 : 1;
+            return sign * (Math.abs(d) + m / 60 + s / 3600);
+        }
+
+        function addCelestialObjects() {
+            const starMaterial = new THREE.PointsMaterial({ color: 0xFFFFFF, sizeAttenuation: false });
+            const starGeometry = new THREE.BufferGeometry();
+            const starPositions = [];
+            const starSizes = [];
+
+            starData.forEach(star => {
+                const ra = parseRA(star.ra);
+                const dec = parseDec(star.dec);
+                const phi = (90 - dec) * (Math.PI / 180);
+                const theta = ra * (Math.PI / 180);
+                const x = -499 * Math.sin(phi) * Math.cos(theta);
+                const y = 499 * Math.cos(phi);
+                const z = -499 * Math.sin(phi) * Math.sin(theta);
+                starPositions.push(x, y, z);
+                // 옵션 1: 선형 스케일링 강화
+                const size = Math.max(1, 10 - star.mag * 2);
+
+                // 옵션 2: 지수 함수 사용
+                //const size = Math.max(1, Math.pow(2, 6 - star.mag));
+
+                // 옵션 3: 로그 스케일 사용
+                //const size = Math.max(1, 20 * Math.log10(10 - star.mag));
+
+                // 옵션 4: 사용자 정의 함수
+                // function customBrightnessScale(mag) {
+                //     if (mag <= 1) return 10;
+                //     if (mag <= 3) return 7;
+                //     if (mag <= 5) return 4;
+                //     return 1;
+                // }
+                // const size = customBrightnessScale(star.mag);
+
+                starSizes.push(size);
+            });
+
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+            starGeometry.setAttribute('size', new THREE.Float32BufferAttribute(starSizes, 1));
+
+            const starField = new THREE.Points(starGeometry, starMaterial);
+            celestialContainer.add(starField);
+
+            planetData.forEach(planet => {
+                const planetGeometry = new THREE.SphereGeometry(2, 32, 32);
+                const planetMaterial = new THREE.MeshBasicMaterial({ color: planet.color });
+                const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
+
+                const phi = (90 - planet.dec) * (Math.PI / 180);
+                const theta = planet.ra * (Math.PI / 180);
+                planetMesh.position.set(
+                    -499 * Math.sin(phi) * Math.cos(theta),
+                    499 * Math.cos(phi),
+                    -499 * Math.sin(phi) * Math.sin(theta)
+                );
+
+                celestialContainer.add(planetMesh);
+            });
+
+        }
+
+        // function addCelestialObjects() {
+        //     const starMaterial = new THREE.PointsMaterial({ color: 0xFFFFFF, sizeAttenuation: false });
+        //     const starGeometry = new THREE.BufferGeometry();
+        //     const starPositions = [];
+        //     const starSizes = [];
+
+        //     starData.forEach(star => {
+        //         const phi = (90 - star.dec) * (Math.PI / 180);
+        //         const theta = star.ra * (Math.PI / 180);
+        //         const x = -499 * Math.sin(phi) * Math.cos(theta);
+        //         const y = 499 * Math.cos(phi);
+        //         const z = -499 * Math.sin(phi) * Math.sin(theta);
+        //         starPositions.push(x, y, z);
+
+        //         const size = Math.max(1, 5 - star.mag);
+        //         starSizes.push(size);
+        //     });
+
+        //     starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+        //     starGeometry.setAttribute('size', new THREE.Float32BufferAttribute(starSizes, 1));
+
+        //     const starField = new THREE.Points(starGeometry, starMaterial);
+        //     celestialContainer.add(starField);
+
+        //     // Add planets
+        //     planetData.forEach(planet => {
+        //         const planetGeometry = new THREE.SphereGeometry(2, 32, 32);
+        //         const planetMaterial = new THREE.MeshBasicMaterial({ color: planet.color });
+        //         const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
+
+        //         const phi = (90 - planet.dec) * (Math.PI / 180);
+        //         const theta = planet.ra * (Math.PI / 180);
+        //         planetMesh.position.set(
+        //             -499 * Math.sin(phi) * Math.cos(theta),
+        //             499 * Math.cos(phi),
+        //             -499 * Math.sin(phi) * Math.sin(theta)
+        //         );
+
+        //         celestialContainer.add(planetMesh);
+        //     });
+        // }
+
+
+        let constellationLines = new THREE.Object3D();
+
+        function createConstellationLines() {
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00FF00 });
+
+            constellationData.forEach(constellation => {
+                const points = [];
+                constellation.stars.forEach(starName => {
+                    const star = starData.find(s => s.name === starName);
+                    if (star) {
+                        const phi = (90 - star.dec) * (Math.PI / 180);
+                        const theta = star.ra * (Math.PI / 180);
+                        const x = -499 * Math.sin(phi) * Math.cos(theta);
+                        const y = 499 * Math.cos(phi);
+                        const z = -499 * Math.sin(phi) * Math.sin(theta);
+                        points.push(new THREE.Vector3(x, y, z));
+                    }
+                });
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geometry, lineMaterial);
+                constellationLines.add(line);
+                celestialContainer.add(constellationLines);
+
+            });
+        }
+
+
+        function toggleConstellations(visible) {
+            if (visible) {
+                celestialContainer.add(constellationLines);
+            } else {
+                celestialContainer.remove(constellationLines);
+            }
+        }
+
+        addCelestialObjects();
+        createConstellationLines();
+
+        // Camera initial position
+        camera.position.set(0, 10, 0);
+        controls.update();
+
+        // GUI controls
+        const guiControls = {
+            latitude: 0,
+            longitude: 0,
+            localTime: 0,
+            showConstellations: false,
+            showGround: true
+        };
+
+        const gui = new dat.GUI();
+        gui.add(guiControls, 'latitude', -90, 90).onChange(updateSimulation);
+        gui.add(guiControls, 'longitude', -180, 180).onChange(updateSimulation);
+        gui.add(guiControls, 'localTime', 0, 24).onChange(updateSimulation);
+        gui.add(guiControls, 'showConstellations').onChange(toggleConstellations);
+        gui.add(guiControls, 'showGround').onChange(toggleGround);
+
+        function toggleGround(visible) {
+            groundPlane.visible = visible;
+        }
+
+        function updateSimulation() {
+            const lat = THREE.MathUtils.degToRad(guiControls.latitude);
+            const lon = THREE.MathUtils.degToRad(guiControls.longitude);
+            const localTime = guiControls.localTime;
+
+            // Calculate the Local Sidereal Time (LST)
+            const lst = (localTime + guiControls.longitude / 15) % 24;
+            const lstRad = lst * (Math.PI / 12);
+
+            // // Create a rotation matrix for the celestial sphere
+            // const rotationMatrix = new THREE.Matrix4().makeRotationY(-lstRad);
+
+            // // Apply the rotation to the celestial sphere and its contents
+            // celestialSphere.setRotationFromMatrix(rotationMatrix);
+            // raDecGrid.setRotationFromMatrix(rotationMatrix);
+            // constellationLines.setRotationFromMatrix(rotationMatrix);
+
+            // Rotate the celestial container instead of individual elements
+            celestialContainer.rotation.y = lstRad;
+
+            // Rotate the ground plane to match the latitude
+            groundPlane.rotation.x = Math.PI / 2 - lat;
+
+            // Update camera and controls
+            camera.position.set(0, 10 * Math.sin(lat), -10 * Math.cos(lat));
+            camera.lookAt(0, Math.sin(lat), Math.cos(lat));
+            controls.target.set(0, Math.sin(lat) * 100, Math.cos(lat) * 100);
+            controls.update();
+        }
+
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Initial setup
+        updateSimulation();
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html> -->

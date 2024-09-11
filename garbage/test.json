@@ -1,0 +1,46 @@
+[
+    {
+        "name": "12261_Cat_diffuse.jpg",
+        "texture": {
+            "metadata": {
+                "version": 4.6,
+                "type": "Texture",
+                "generator": "Texture.toJSON"
+            },
+            "uuid": "d6f1a45c-cf34-4251-b8ee-b43184cb91a2",
+            "name": "12261_Cat_diffuse.jpg",
+            "image": "69c86fa6-ebd3-4af2-9a23-1eb92169e1da",
+            "mapping": 300,
+            "channel": 0,
+            "repeat": [
+                1,
+                1
+            ],
+            "offset": [
+                0,
+                0
+            ],
+            "center": [
+                0,
+                0
+            ],
+            "rotation": 0,
+            "wrap": [
+                1001,
+                1001
+            ],
+            "format": 1023,
+            "internalFormat": null,
+            "type": 1009,
+            "colorSpace": "",
+            "minFilter": 1008,
+            "magFilter": 1006,
+            "anisotropy": 1,
+            "flipY": true,
+            "generateMipmaps": true,
+            "premultiplyAlpha": false,
+            "unpackAlignment": 4
+        },
+        "url": "uploads/12261_Cat_diffuse.jpg"
+    }
+]

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro Notebook</title>
+    <style>
+        #messages {
+            width: 500px;
+            height: 300px;
+            border: 1px solid #ccc;
+            overflow-y: scroll;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .form-container {
+            display: none;
+        }
+
+        .form-container.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Hello, 계룡대?</h1>
+    <div id="userCount"></div>
+
+    <div id="loginContainer" class="form-container active">
+        <h1>Login</h1>
+        <form id="loginForm">
+            <label for="login_username">Username:</label><br>
+            <input type="text" id="login_username" name="username"><br>
+            <label for="login_password">Password:</label><br>
+            <input type="password" id="login_password" name="password"><br><br>
+            <input type="button" value="Login" onclick="submitLogin()">
+        </form>
+        <div id="loginResult"></div>
+        <button onclick="showSignupForm()">Signup</button>
+    </div>
+
+    <div id="signupContainer" class="form-container">
+        <h1>Signup</h1>
+        <form id="signupForm">
+            <label for="signup_username">Username:</label><br>
+            <input type="text" id="signup_username" name="username"><br>
+            <button type="button" onclick="checkUsername()">Check Username</button><br>
+            <label for="signup_password">Password:</label><br>
+            <input type="password" id="signup_password" name="password"><br>
+            <label for="signup_confirm_password">Confirm Password:</label><br>
+            <input type="password" id="signup_confirm_password" name="confirm_password"><br><br>
+            <input type="button" value="Signup" onclick="submitSignup()">
+        </form>
+        <div id="signupResult"></div>
+        <button onclick="showLoginForm()">Back to Login</button>
+    </div>
+    <!-- File Upload Form -->
+    <div id="uploadContainer">
+        <h2>Upload File</h2>
+        <form id="uploadForm">
+            <input type="file" id="fileInput" name="file"><br><br>
+            <input type="button" value="Upload" onclick="uploadFile()">
+        </form>
+        <div id="uploadResult"></div>
+    </div>
+
+    <!-- File Download List -->
+    <div id="downloadContainer">
+        <h2>Download File</h2>
+        <div id="fileList"></div>
+        <div id="downloadResult"></div>
+    </div>
+
+    <div id="messages"></div>
+
+    <script>
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connection established');
+        };
+
+        ws.onmessage = (event) => {
+            const messagesDiv = document.getElementById('messages');
+            const message = document.createElement('div');
+            message.textContent = `Message from server: ${event.data}`;
+            messagesDiv.appendChild(message);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to the bottom
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket connection closed');
+        };
+        function showSignupForm() {
+            document.getElementById('loginContainer').classList.remove('active');
+            document.getElementById('signupContainer').classList.add('active');
+        }
+
+        function showLoginForm() {
+            document.getElementById('signupContainer').classList.remove('active');
+            document.getElementById('loginContainer').classList.add('active');
+        }
+        function checkUsername() {
+            const username = document.getElementById('signup_username').value;
+
+            fetch('/check-username', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `username=${encodeURIComponent(username)}`
+            })
+                .then(response => response.text())
+                .then(data => {
+                    const signupResult = document.getElementById('signupResult');
+                    signupResult.textContent = data;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        function submitSignup() {
+            const username = document.getElementById('signup_username').value;
+            const password = document.getElementById('signup_password').value;
+            const confirmPassword = document.getElementById('signup_confirm_password').value;
+            const signupResult = document.getElementById('signupResult');
+
+            if (password !== confirmPassword) {
+                signupResult.textContent = 'Passwords do not match';
+                return;
+            }
+            fetch('/signup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+            })
+                .then(response => response.text())
+                .then(data => {
+                    signupResult.textContent = data;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+        function submitLogin() {
+            const username = document.getElementById('login_username').value;
+            const password = document.getElementById('login_password').value;
+
+            fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+            })
+                .then(response => response.text())
+                .then(data => {
+                    const loginResult = document.getElementById('loginResult');
+                    loginResult.textContent = data;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        function fetchUserCount() {
+            fetch('/usercount')
+            .then(response => response.text())
+            .then(data => {
+                const userCountDiv = document.getElementById('userCount');
+                userCountDiv.textContent = data;
+            })
+            .catch(error => {
+                console.error('Error fetching user count:', error);
+            });
+        }
+        function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(data => {
+                const uploadResult = document.getElementById('uploadResult');
+                uploadResult.textContent = data;
+                fetchFileList(); // 파일 업로드 후 파일 목록 갱신
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+            });
+        }
+        function fetchFileList() {
+            fetch('/filelist')
+            .then(response => response.json())
+            .then(data => {
+                const fileList = document.getElementById('fileList');
+                fileList.innerHTML = '';
+                data.forEach(filename => {
+                    const fileItem = document.createElement('div');
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = `javascript:downloadFile('${filename}')`;
+                    downloadLink.textContent = filename;
+                    fileItem.appendChild(downloadLink);
+                    fileList.appendChild(fileItem);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching file list:', error);
+            });
+        }
+        function downloadFile() {
+            const filename = document.getElementById('downloadFilename').value;
+            fetch(`/download?filename=${encodeURIComponent(filename)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('File not found');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                const downloadResult = document.getElementById('downloadResult');
+                downloadResult.textContent = 'Error: ' + error.message;
+                console.error('Error downloading file:', error);
+            });
+        }
+        // 페이지 로드 시 사용자 수를 가져옵니다.
+        window.onload = fetchUserCount;
+                // 페이지 로드 시 파일 목록을 가져옵니다.
+                window.onload = fetchFileList;
+    </script>
+</body>
+
+</html>
