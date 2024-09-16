@@ -61,6 +61,7 @@ button {
 /*스크롤바 디자인*/
 *::-webkit-scrollbar {
     width: 5px;
+    height: 2px;
 }
 
 *::-webkit-scrollbar-thumb {
@@ -81,6 +82,26 @@ button {
     'GRAD' 0,
     'opsz' 24
   }
+
+/* Quill 에디터 스타일 */
+#editor {
+    height: calc(100vh - 600px);
+    min-height: 100px;
+    width: 100%;
+
+    border: none;
+}
+.ql-toolbar.ql-snow {
+    width: 100%;
+    background-color: var(--base-color2);
+
+    border: none;
+    border-radius: 8px;
+    
+    white-space: nowrap;
+    overflow-x: scroll;
+    overflow-y: hidden;
+}
 
 /*소셜 아이덴티티*/
 .social-logo-img {
@@ -541,10 +562,11 @@ article {
     font-size: var(--h5);
     font-weight: 500;
     margin-right: 10px;
-
+    flex-shrink: 0;
 }
 
 .input-box-input {
+    width: 100px;
     height: 40px;
     border: none;
     border-radius: 8px;
@@ -561,6 +583,7 @@ article {
     display: flex;
     justify-content: flex-start;
     align-items: center;
+    flex-direction: column;
     flex-grow: 1;
 }
 
@@ -818,14 +841,15 @@ header nav li:hover {
 }
 
 #gnb-login {
-    display: flex;
-}
-
-#gnb-login-link {
     display: none;
 }
 
-@media screen and (max-width: 1280px) {
+#gnb-login-link {
+    display: flex;
+}
+
+/*
+@media screen and (min-width: 1280px) {
     #gnb-login {
         display: none;
     }
@@ -834,6 +858,7 @@ header nav li:hover {
         display: flex;
     }
 }
+*/
 
 /*사이드 네비게이션*/
 .side-nav {
@@ -964,22 +989,24 @@ figure {
 }
 
 #btn-login {
-    display: flex;
-}
-
-#btn-login-link {
     display: none;
 }
 
-@media screen and (max-width: 1280px) {
+#btn-login-link {
+    display: flex;
+}
+
+/*
+@media screen and (min-width: 1280px) {
     #btn-login {
-        display: none;
+        display: flex;
     }
 
     #btn-login-link {
-        display: flex;
+        display: none;
     }
 }
+*/
 
 /*로그인*/
 .login-set {
@@ -995,6 +1022,7 @@ figure {
 
 .login-part {
     width: 80%;
+    max-width: 600px;
     height: 60px;
     border-radius: 16px;
     padding: 0 20px;
